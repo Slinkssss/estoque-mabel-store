@@ -1,10 +1,10 @@
 import uuid
 import psycopg2
 from psycopg2.extras import DictCursor
-import io
-import zipfile
 from pathlib import Path
 from datetime import date, timedelta
+from io import BytesIO
+from PIL import Image
 
 import pandas as pd
 import streamlit as st
@@ -27,6 +27,7 @@ class ConexaoPostgres:
     """Adaptador pequeno para manter o estilo execute/fetch do código original."""
     def __init__(self, raw):
         self.raw = raw
+        self.dirty = False
 
     def __enter__(self):
         return self
@@ -35,6 +36,9 @@ class ConexaoPostgres:
         try:
             if tipo is None:
                 self.raw.commit()
+                if self.dirty:
+                    # Atualiza os caches depois de qualquer alteração no banco.
+                    st.cache_data.clear()
             else:
                 self.raw.rollback()
         finally:
@@ -44,6 +48,9 @@ class ConexaoPostgres:
     def execute(self, sql, parametros=None):
         sql = sql.replace("?", "%s")
         sql = sql.replace("BEGIN IMMEDIATE", "BEGIN")
+        comando = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
+        if comando in {"INSERT", "UPDATE", "DELETE", "ALTER", "CREATE", "DROP", "TRUNCATE", "REPLACE"}:
+            self.dirty = True
         cursor = self.raw.cursor(cursor_factory=DictCursor)
         cursor.execute(sql, parametros or ())
         return cursor
@@ -57,22 +64,17 @@ def conectar():
             "A conexão com o Supabase ainda não foi configurada. "
             "Adicione SUPABASE_DB_URL nas configurações de Secrets."
         ) from erro
-    raw = psycopg2.connect(url, sslmode="require", connect_timeout=15)
+    raw = psycopg2.connect(url, sslmode="require", connect_timeout=8, application_name="EstoqueMabelStore")
     return ConexaoPostgres(raw)
 
 
 # ------------------------------------------
 # 2. BANCO DE DADOS
 # ------------------------------------------
+@st.cache_resource(show_spinner=False)
 def criar_tabelas():
-    """Confere a conexão e se as quatro tabelas já criadas no Supabase existem."""
+    """Confere as tabelas uma vez por execução do app, não a cada interação."""
     with conectar() as conexao:
-        conexao.execute("""
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'public'
-              AND table_name IN ('produtos', 'movimentacoes_estoque', 'vendas', 'pagamentos_dividas')
-        """)
         tabelas = conexao.execute("""
             SELECT table_name
             FROM information_schema.tables
@@ -86,6 +88,23 @@ def criar_tabelas():
             raise RuntimeError(
                 "Faltam tabelas no Supabase: " + ", ".join(sorted(faltando))
             )
+        # Identificador opcional para agrupar itens que pertencem à mesma venda.
+        conexao.execute("ALTER TABLE vendas ADD COLUMN IF NOT EXISTS venda_grupo_id TEXT")
+
+
+
+def otimizar_foto(arquivo, limite=900, qualidade=82):
+    """Redimensiona fotos antes de salvá-las, reduzindo tráfego e memória."""
+    if not arquivo:
+        return None
+    try:
+        imagem = Image.open(BytesIO(arquivo)).convert("RGB")
+        imagem.thumbnail((limite, limite), Image.Resampling.LANCZOS)
+        saida = BytesIO()
+        imagem.save(saida, format="JPEG", quality=qualidade, optimize=True)
+        return saida.getvalue()
+    except Exception as erro:
+        raise ValueError("Não foi possível processar a imagem. Tente outro arquivo JPG ou PNG.") from erro
 
 
 def cadastrar_produto(nome, categoria, custo, preco, quantidade, foto):
@@ -105,19 +124,46 @@ def cadastrar_produto(nome, categoria, custo, preco, quantidade, foto):
             """, (produto_id, nome, int(quantidade), int(quantidade)))
 
 
-def listar_produtos(busca=""):
+def separar_categorias(valor):
+    """Lê categorias múltiplas separadas por | e mantém compatibilidade com dados antigos."""
+    if not valor:
+        return []
+    return list(dict.fromkeys(parte.strip() for parte in str(valor).split("|") if parte.strip()))
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def listar_produtos(busca="", incluir_fotos=True):
     with conectar() as conexao:
+        colunas = "*" if incluir_fotos else "id, codigo, nome, categoria, custo, preco, quantidade"
         if busca:
-            resultado = conexao.execute("""
-                SELECT * FROM produtos
+            resultado = conexao.execute(f"""
+                SELECT {colunas} FROM produtos
                 WHERE nome ILIKE ? OR categoria ILIKE ?
                 ORDER BY nome
             """, (f"%{busca}%", f"%{busca}%"))
         else:
-            resultado = conexao.execute("SELECT * FROM produtos ORDER BY nome")
-        return [dict(linha) for linha in resultado.fetchall()]
+            resultado = conexao.execute(f"SELECT {colunas} FROM produtos ORDER BY nome")
+        produtos = [dict(linha) for linha in resultado.fetchall()]
+        for produto in produtos:
+            if isinstance(produto.get("foto"), memoryview):
+                produto["foto"] = bytes(produto["foto"])
+        return produtos
 
 
+def listar_fotos_produtos(ids):
+    """Busca imagens somente para os produtos que serão exibidos na tela."""
+    ids = [int(item) for item in ids]
+    if not ids:
+        return {}
+    marcadores = ",".join(["?"] * len(ids))
+    with conectar() as conexao:
+        linhas = conexao.execute(
+            f"SELECT id, foto FROM produtos WHERE id IN ({marcadores})", tuple(ids)
+        ).fetchall()
+    return {int(linha["id"]): (bytes(linha["foto"]) if isinstance(linha["foto"], memoryview) else linha["foto"]) for linha in linhas}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def listar_categorias():
     with conectar() as conexao:
         resultado = conexao.execute("""
@@ -125,12 +171,26 @@ def listar_categorias():
             FROM (
                 SELECT DISTINCT categoria
                 FROM produtos
-                WHERE categoria IS NOT NULL
-                  AND TRIM(categoria) != ''
+                WHERE categoria IS NOT NULL AND TRIM(categoria) != ''
             ) AS categorias
             ORDER BY LOWER(categoria)
         """)
-        return [linha[0] for linha in resultado.fetchall()]
+        categorias = []
+        for linha in resultado.fetchall():
+            categorias.extend(separar_categorias(linha[0]))
+        return sorted(set(categorias), key=str.casefold)
+
+
+def atualizar_categorias_produto(produto_id, categorias):
+    categorias_limpa = list(dict.fromkeys(str(c).strip() for c in categorias if str(c).strip()))
+    texto = " | ".join(categorias_limpa) if categorias_limpa else "Sem categoria"
+    with conectar() as conexao:
+        conexao.execute("UPDATE produtos SET categoria = ? WHERE id = ?", (texto, int(produto_id)))
+
+
+def atualizar_foto_produto(produto_id, foto):
+    with conectar() as conexao:
+        conexao.execute("UPDATE produtos SET foto = ? WHERE id = ?", (foto, int(produto_id)))
 
 
 def atualizar_precos_produto(produto_id, custo, preco):
@@ -277,6 +337,8 @@ def registrar_venda(produto_id, cliente, quantidade, forma_pagamento, telefone_c
 
         total = float(produto["preco"]) * int(quantidade)
         status_pagamento = "Devendo" if forma_pagamento == "A pagar" else "Pago"
+        # Mantém o registro interno para os indicadores financeiros; a tela de histórico
+        # mostra somente as vendas que ainda têm saldo a receber.
         conexao.execute("""
             INSERT INTO vendas
                 (produto_id, produto_nome, cliente, telefone_cliente, quantidade,
@@ -303,11 +365,69 @@ def registrar_venda(produto_id, cliente, quantidade, forma_pagamento, telefone_c
             produto_id, produto["nome"], int(quantidade), int(produto["quantidade"]),
             saldo_novo, f"Venda para {cliente.strip()}"
         ))
+    listar_vendas.clear()
 
 
-def listar_vendas():
+def registrar_venda_varios(itens, cliente, forma_pagamento, telefone_cliente="", data_prevista_pagamento=None):
+    """Registra todos os itens de uma compra numa transação só, com estoque validado."""
+    if not itens:
+        raise ValueError("Adicione pelo menos um produto à venda.")
+    grupo_id = uuid.uuid4().hex
     with conectar() as conexao:
-        resultado = conexao.execute("SELECT * FROM vendas ORDER BY id DESC")
+        conexao.execute("BEGIN IMMEDIATE")
+        preparados = []
+        total_geral = 0.0
+        for item in itens:
+            produto = conexao.execute(
+                "SELECT id, nome, preco, custo, quantidade FROM produtos WHERE id = ? FOR UPDATE",
+                (int(item["produto_id"]),),
+            ).fetchone()
+            quantidade = int(item["quantidade"])
+            if produto is None:
+                raise ValueError("Um dos produtos selecionados não foi encontrado.")
+            if quantidade < 1:
+                raise ValueError(f"A quantidade de {produto['nome']} precisa ser pelo menos 1.")
+            if int(produto["quantidade"]) < quantidade:
+                raise ValueError(f"Estoque insuficiente para {produto['nome']}. Há apenas {produto['quantidade']} unidade(s).")
+            total_item = round(float(produto["preco"]) * quantidade, 2)
+            total_geral += total_item
+            preparados.append((produto, quantidade, total_item))
+
+        status_pagamento = "Devendo" if forma_pagamento == "A pagar" else "Pago"
+        for produto, quantidade, total_item in preparados:
+            # Mantém o registro para os indicadores financeiros, mas a tela de histórico
+            # exibe somente vendas com saldo pendente.
+            conexao.execute("""
+                INSERT INTO vendas
+                    (produto_id, produto_nome, cliente, telefone_cliente, quantidade,
+                     valor_unitario, custo_unitario, total, forma_pagamento, status_pagamento,
+                     valor_pago, data_prevista_pagamento, venda_grupo_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                produto["id"], produto["nome"], cliente.strip(), telefone_cliente.strip() or None,
+                quantidade, float(produto["preco"]), float(produto["custo"]), total_item,
+                forma_pagamento, status_pagamento, total_item if status_pagamento == "Pago" else 0.0,
+                data_prevista_pagamento if forma_pagamento == "A pagar" else None, grupo_id,
+            ))
+            saldo_novo = int(produto["quantidade"]) - quantidade
+            conexao.execute("UPDATE produtos SET quantidade = ? WHERE id = ?", (saldo_novo, produto["id"]))
+            conexao.execute("""
+                INSERT INTO movimentacoes_estoque
+                    (produto_id, produto_nome, tipo, quantidade, saldo_anterior, saldo_novo, observacao)
+                VALUES (?, ?, 'Saída por venda', ?, ?, ?, ?)
+            """, (produto["id"], produto["nome"], quantidade, int(produto["quantidade"]), saldo_novo,
+                  f"Venda {grupo_id[:8]} para {cliente.strip()}"))
+    listar_vendas.clear()
+    return round(total_geral, 2), grupo_id
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def listar_vendas():
+    """Lista apenas vendas com saldo pendente; as pagas ficam ocultas da interface."""
+    with conectar() as conexao:
+        resultado = conexao.execute(
+            "SELECT * FROM vendas WHERE status_pagamento IN ('Devendo', 'Parcial') ORDER BY id DESC"
+        )
         return [dict(linha) for linha in resultado.fetchall()]
 
 
@@ -394,6 +514,7 @@ def registrar_pagamento_divida(venda_id, valor):
             "UPDATE vendas SET valor_pago = ?, status_pagamento = ? WHERE id = ?",
             (acumulado, status, int(venda_id)),
         )
+    listar_vendas.clear()
 
 
 def listar_pagamentos_divida(venda_id):
@@ -407,7 +528,7 @@ def listar_pagamentos_divida(venda_id):
 
 
 def marcar_venda_paga(venda_id):
-    """Registra o saldo restante como pagamento, preservando o histórico."""
+    """Registra o saldo restante como pago; a venda deixa de aparecer na lista de pendências."""
     with conectar() as conexao:
         venda = conexao.execute(
             "SELECT total, COALESCE(valor_pago, 0) AS valor_pago FROM vendas WHERE id = ?",
@@ -595,6 +716,53 @@ st.markdown("""
         .block-container { padding: 1rem 1rem 2rem; }
         [data-testid="stMetric"] { padding: .8rem; }
     }
+
+
+    /* Ajustes responsivos: preservam as imagens originais e evitam colunas estreitas no celular. */
+    @media (max-width: 768px) {
+        .block-container {
+            padding: 0.8rem 0.75rem 2rem 0.75rem !important;
+            max-width: 100% !important;
+        }
+        h1 { font-size: 1.55rem !important; }
+        h2 { font-size: 1.35rem !important; }
+        h3 { font-size: 1.15rem !important; }
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 0.65rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            flex: 1 1 100% !important;
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+        div[data-testid="stMetric"] {
+            padding: 0.65rem !important;
+        }
+        div[data-testid="stImage"] img {
+            max-width: 100% !important;
+            height: auto !important;
+            object-fit: contain !important;
+        }
+        div[data-testid="stVerticalBlock"] > div {
+            min-width: 0;
+        }
+        .stButton > button, .stDownloadButton > button {
+            width: 100%;
+            min-height: 2.7rem;
+        }
+        input, textarea, [data-baseweb="select"] {
+            max-width: 100% !important;
+        }
+    }
+    @media (max-width: 420px) {
+        .block-container {
+            padding-left: 0.55rem !important;
+            padding-right: 0.55rem !important;
+        }
+        div[data-testid="stMetricValue"] { font-size: 1.35rem !important; }
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -611,7 +779,7 @@ st.sidebar.caption("Sistema de estoque e vendas")
 st.sidebar.divider()
 pagina = st.sidebar.radio(
     "Menu Principal:",
-    ["Dashboard", "Cadastrar Produtos", "Estoque", "Catálogo Visual", "Controle de Dívidas", "Relatórios e Exportação", "Vendas"],
+    ["Dashboard", "Cadastrar Produtos", "Estoque", "Catálogo Visual", "Controle de Dívidas", "Vendas"],
 )
 
 with conectar() as conexao:
@@ -635,32 +803,8 @@ if pagina == "Dashboard":
     st.subheader("Dashboard financeiro")
     st.caption("Acompanhe o faturamento, os pagamentos e o desempenho da loja.")
 
-    hoje = date.today()
-    inicio_semana = hoje - timedelta(days=6)
-
-    with conectar() as conexao:
-        vendas = conexao.execute("""
-            SELECT * FROM vendas ORDER BY id DESC
-        """).fetchall()
-
-        resumo_hoje = conexao.execute("""
-            SELECT
-                COUNT(*) AS quantidade_vendas,
-                COALESCE(SUM(COALESCE(valor_pago, CASE WHEN status_pagamento = 'Pago' THEN total ELSE 0 END)), 0) AS recebido
-            FROM vendas
-            WHERE (criado_em AT TIME ZONE 'America/Sao_Paulo')::date = CURRENT_DATE
-        """).fetchone()
-
-        resumo_semana = conexao.execute("""
-            SELECT (criado_em AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
-                   COALESCE(SUM(valor_pago), 0) AS total
-            FROM vendas
-            WHERE (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= ?
-              AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date <= ?
-            GROUP BY (criado_em AT TIME ZONE 'America/Sao_Paulo')::date
-        """, (inicio_semana.isoformat(), hoje.isoformat())).fetchall()
-
-    vendas = [dict(v) for v in vendas]
+    # Os indicadores são calculados no banco depois que o período é escolhido.
+    # Assim não precisamos transferir todas as vendas para o navegador/app.
 
     # Personalização do dashboard: período e visibilidade dos indicadores.
     hoje_dashboard = date.today()
@@ -705,34 +849,37 @@ if pagina == "Dashboard":
             "Mostrar lucro bruto estimado", value=True, key="mostrar_lucro_dashboard"
         )
 
-    if data_inicio_dashboard is not None and data_inicio_dashboard > data_fim_dashboard:
+    periodo_valido = not (data_inicio_dashboard is not None and data_inicio_dashboard > data_fim_dashboard)
+    faturamento_recebido = 0.0
+    valores_a_receber = 0.0
+    quantidade_vendas = 0
+    lucro_estimado = 0.0
+
+    if not periodo_valido:
         st.error("A data inicial não pode ser posterior à data final. Ajuste o período para ver os indicadores.")
-        vendas_periodo = []
-    elif data_inicio_dashboard is None and periodo_dashboard == "Todo o período":
-        vendas_periodo = vendas
     else:
-        vendas_periodo = []
-        for venda in vendas:
-            try:
-                data_venda = date.fromisoformat(str(venda.get("criado_em", ""))[:10])
-            except (TypeError, ValueError):
-                continue
-            if data_inicio_dashboard <= data_venda <= data_fim_dashboard:
-                vendas_periodo.append(venda)
-
-    vendas_pagas = [v for v in vendas_periodo if v["status_pagamento"] == "Pago"]
-    vendas_pendentes = [v for v in vendas_periodo if v["status_pagamento"] in ("Devendo", "Parcial")]
-
-    faturamento_recebido = sum(float(v.get("valor_pago") or 0) for v in vendas_periodo)
-    valores_a_receber = sum(max(0, float(v["total"] or 0) - float(v.get("valor_pago") or 0)) for v in vendas_pendentes)
-    quantidade_vendas = len(vendas_periodo)
-
-    # O custo é gravado nas novas vendas. Vendas antigas podem ter custo estimado.
-    lucro_estimado = sum(
-        (float(v.get("valor_unitario") or 0) - float(v.get("custo_unitario") or 0))
-        * int(v.get("quantidade") or 0)
-        for v in vendas_pagas
-    )
+        condicao_data = ""
+        parametros = []
+        if data_inicio_dashboard is not None:
+            condicao_data = "WHERE (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= ? AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date <= ?"
+            parametros = [data_inicio_dashboard.isoformat(), data_fim_dashboard.isoformat()]
+        with conectar() as conexao:
+            resumo = conexao.execute(f"""
+                SELECT
+                    COUNT(*) AS quantidade,
+                    COALESCE(SUM(COALESCE(valor_pago, 0)), 0) AS recebido,
+                    COALESCE(SUM(CASE WHEN status_pagamento IN ('Devendo', 'Parcial')
+                        THEN GREATEST(COALESCE(total, 0) - COALESCE(valor_pago, 0), 0) ELSE 0 END), 0) AS a_receber,
+                    COALESCE(SUM(CASE WHEN status_pagamento = 'Pago'
+                        THEN (COALESCE(valor_unitario, 0) - COALESCE(custo_unitario, 0)) * COALESCE(quantidade, 0)
+                        ELSE 0 END), 0) AS lucro
+                FROM vendas
+                {condicao_data}
+            """, tuple(parametros)).fetchone()
+        faturamento_recebido = float(resumo["recebido"] or 0)
+        valores_a_receber = float(resumo["a_receber"] or 0)
+        quantidade_vendas = int(resumo["quantidade"] or 0)
+        lucro_estimado = float(resumo["lucro"] or 0)
 
     if periodo_dashboard == "Todo o período":
         legenda_periodo = "Todo o período"
@@ -757,27 +904,6 @@ if pagina == "Dashboard":
         coluna.metric(rotulo, valor)
 
     st.divider()
-    st.subheader("Resumo de hoje")
-    h1, h2, h3 = st.columns(3)
-    h1.metric("Vendas registradas hoje", int(resumo_hoje["quantidade_vendas"] or 0))
-    h2.metric("Recebido hoje", moeda(resumo_hoje["recebido"]))
-    h3.metric("Produtos sem estoque", sum(1 for produto in listar_produtos() if int(produto["quantidade"]) == 0))
-
-    st.divider()
-    st.subheader("Vendas recebidas — últimos 7 dias")
-    valores_por_dia = {
-        linha["dia"]: float(linha["total"] or 0)
-        for linha in resumo_semana
-    }
-    dias = [inicio_semana + timedelta(days=i) for i in range(7)]
-    dados_grafico = pd.DataFrame({
-        "Dia": [d.strftime("%d/%m") for d in dias],
-        "Valor recebido": [valores_por_dia.get(d.isoformat(), 0) for d in dias],
-    })
-    st.bar_chart(dados_grafico, x="Dia", y="Valor recebido", use_container_width=True)
-
-
-    st.divider()
     st.subheader("Visão do estoque")
     e1, e2 = st.columns(2)
     e1.metric("Produtos cadastrados", total_produtos)
@@ -799,14 +925,15 @@ elif pagina == "Cadastrar Produtos":
         col1, col2 = st.columns(2)
         with col1:
             nome = st.text_input("Nome do produto *").strip()
-            categoria_selecionada = st.selectbox(
-                "Categoria salva",
-                options=opcoes_categoria,
-                help="Escolha uma categoria que você já usou antes.",
+            categorias_selecionadas = st.multiselect(
+                "Categorias salvas (você pode escolher várias)",
+                options=categorias_salvas,
+                help="Um produto pode pertencer a várias categorias.",
             )
-            nova_categoria = st.text_input(
-                "Ou crie uma nova categoria (opcional)",
-                placeholder="Digite apenas se for uma categoria nova",
+            novas_categorias = st.text_input(
+                "Novas categorias (opcional)",
+                placeholder="Separe várias categorias com vírgula",
+                help="Exemplo: Verão, Promoção, Presentes",
             ).strip()
             foto_enviada = st.file_uploader(
                 "Foto do produto (opcional)",
@@ -823,8 +950,10 @@ elif pagina == "Cadastrar Produtos":
             if not nome:
                 st.error("Preencha o nome do produto.")
             else:
-                categoria_final = nova_categoria or categoria_selecionada or "Sem categoria"
-                foto = foto_enviada.getvalue() if foto_enviada is not None else None
+                categorias_novas = [c.strip() for c in novas_categorias.split(",") if c.strip()]
+                categorias_finais = list(dict.fromkeys(categorias_selecionadas + categorias_novas))
+                categoria_final = " | ".join(categorias_finais) if categorias_finais else "Sem categoria"
+                foto = otimizar_foto(foto_enviada.getvalue()) if foto_enviada is not None else None
                 try:
                     cadastrar_produto(nome, categoria_final, custo, preco, quantidade, foto)
                     st.success(f"Produto '{nome}' cadastrado!")
@@ -835,15 +964,27 @@ elif pagina == "Cadastrar Produtos":
     st.divider()
     st.subheader("Produtos cadastrados")
     busca = st.text_input("Pesquisar por nome ou categoria", placeholder="Digite para pesquisar...")
-    produtos = listar_produtos(busca)
+    produtos = listar_produtos(busca, incluir_fotos=False)
     if produtos:
-        for inicio in range(0, len(produtos), 3):
+        total_produtos_lista = len(produtos)
+        pagina_produtos = st.number_input(
+            "Página de produtos", min_value=1,
+            max_value=max(1, (total_produtos_lista + 29) // 30),
+            value=1, step=1, key="pagina_produtos_cadastro"
+        )
+        inicio_produtos = (int(pagina_produtos) - 1) * 30
+        produtos_exibidos = produtos[inicio_produtos:inicio_produtos + 30]
+        fotos_produtos = listar_fotos_produtos([p["id"] for p in produtos_exibidos])
+        for produto in produtos_exibidos:
+            produto["foto"] = fotos_produtos.get(int(produto["id"]))
+        st.caption(f"Exibindo {len(produtos_exibidos)} de {total_produtos_lista} produto(s)")
+        for inicio in range(0, len(produtos_exibidos), 3):
             colunas = st.columns(3)
-            for coluna, produto in zip(colunas, produtos[inicio:inicio + 3]):
+            for coluna, produto in zip(colunas, produtos_exibidos[inicio:inicio + 3]):
                 with coluna:
                     with st.container(border=True):
                         if produto.get("foto"):
-                            st.image(bytes(produto["foto"]), use_container_width=True)
+                            st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
                         else:
                             st.caption("Sem foto cadastrada")
                         st.markdown(f"**{produto['nome']}**")
@@ -860,7 +1001,7 @@ elif pagina == "Cadastrar Produtos":
             key="pesquisa_produto_edicao_precos",
         ).strip().lower()
         produtos_para_editar = [
-            p for p in produtos
+            p for p in listar_produtos(busca, incluir_fotos=False)
             if pesquisa_edicao in str(p["nome"]).lower()
             or pesquisa_edicao in str(p["categoria"]).lower()
             or pesquisa_edicao in str(p["id"])
@@ -903,6 +1044,42 @@ elif pagina == "Cadastrar Produtos":
 
         else:
             st.info("Nenhum produto corresponde à pesquisa. Tente outro nome ou categoria.")
+
+        st.divider()
+        st.subheader("Editar categorias e imagem de um produto")
+        todos_para_editar = listar_produtos("", incluir_fotos=False)
+        if todos_para_editar:
+            opcoes_produtos_edicao = {f"{p['nome']} (ID {p['id']})": p for p in todos_para_editar}
+            nome_produto_edicao = st.selectbox("Selecione o produto cuja imagem ou categorias deseja alterar", list(opcoes_produtos_edicao), key="produto_edicao_categoria_foto")
+            produto_categoria_foto = opcoes_produtos_edicao[nome_produto_edicao]
+            categorias_atual = separar_categorias(produto_categoria_foto.get("categoria"))
+            if categorias_atual == ["Sem categoria"]:
+                categorias_atual = []
+            foto_atual = listar_fotos_produtos([produto_categoria_foto["id"]]).get(int(produto_categoria_foto["id"]))
+            if foto_atual:
+                st.caption("Imagem atual do produto")
+                st.image(bytes(foto_atual) if isinstance(foto_atual, memoryview) else foto_atual, width=220)
+            else:
+                st.info("Este produto ainda não tem imagem cadastrada.")
+            with st.form(f"form_categoria_foto_{produto_categoria_foto['id']}"):
+                categorias_escolhidas_edicao = st.multiselect(
+                    "Categorias do produto", options=sorted(set(listar_categorias() + categorias_atual), key=str.casefold),
+                    default=categorias_atual, key=f"categorias_edit_{produto_categoria_foto['id']}"
+                )
+                categorias_novas_edicao = st.text_input("Adicionar novas categorias (separe por vírgula)", key=f"novas_categorias_edit_{produto_categoria_foto['id']}")
+                nova_foto = st.file_uploader("Escolher nova imagem do produto", type=["png", "jpg", "jpeg", "webp"], key=f"foto_edit_{produto_categoria_foto['id']}", help="Selecione uma imagem para substituir a atual. Se deixar vazio, a imagem atual será mantida.")
+                salvar_categoria_foto = st.form_submit_button("Salvar categorias e imagem", use_container_width=True)
+                if salvar_categoria_foto:
+                    categorias_extra = [c.strip() for c in categorias_novas_edicao.split(",") if c.strip()]
+                    categorias_final_edicao = list(dict.fromkeys(categorias_escolhidas_edicao + categorias_extra))
+                    try:
+                        atualizar_categorias_produto(produto_categoria_foto["id"], categorias_final_edicao)
+                        if nova_foto is not None:
+                            atualizar_foto_produto(produto_categoria_foto["id"], otimizar_foto(nova_foto.getvalue()))
+                        st.success("Categorias e imagem atualizadas com sucesso.")
+                        st.rerun()
+                    except (ValueError, psycopg2.Error) as erro:
+                        st.error(f"Não foi possível salvar as alterações: {erro}")
 
         with st.expander("Excluir um produto"):
             st.warning("A exclusão de um produto pode ser permanente. Confira o nome antes de confirmar.")
@@ -950,7 +1127,7 @@ elif pagina == "Cadastrar Produtos":
 elif pagina == "Estoque":
     st.subheader("Controle completo de estoque")
     st.caption("Consulte quais produtos estão disponíveis, ajuste quantidades e acompanhe o histórico de movimentações.")
-    produtos = listar_produtos()
+    produtos = listar_produtos(incluir_fotos=False)
 
     if produtos:
         sem_estoque = sum(1 for p in produtos if int(p["quantidade"]) == 0)
@@ -1020,71 +1197,12 @@ elif pagina == "Estoque":
         else:
             st.info("Nenhum produto corresponde aos filtros selecionados.")
 
-        st.divider()
-        st.markdown("### Histórico de movimentações")
-        movimentos = listar_movimentacoes()
-        if movimentos:
-            st.caption("Exibe até as 300 movimentações mais recentes, incluindo estoque inicial, entradas, retiradas e vendas.")
-            st.dataframe([{
-                "Data": m["criado_em"], "Produto": m["produto_nome"],
-                "Movimentação": m["tipo"], "Quantidade": m["quantidade"],
-                "Saldo anterior": m["saldo_anterior"], "Saldo novo": m["saldo_novo"],
-                "Observação": m["observacao"] or "—",
-            } for m in movimentos], use_container_width=True, hide_index=True)
-        else:
-            st.info("Ainda não há movimentações registradas. Novos ajustes e vendas aparecerão aqui.")
+
     else:
         st.info("Cadastre produtos para consultar e controlar o estoque.")
 
     st.divider()
-    with st.expander("Gerenciar estoque e histórico", expanded=False):
-        st.subheader("Excluir histórico de movimentações")
-        movimentos_exclusao = listar_todas_movimentacoes()
-
-        if movimentos_exclusao:
-            opcoes_movimentos = {
-                f"Movimentação #{m['id']} — {m['produto_nome']} — {m['tipo']} — {m['criado_em']}": m
-                for m in movimentos_exclusao
-            }
-            movimento_label = st.selectbox(
-                "Selecione uma movimentação para excluir",
-                list(opcoes_movimentos.keys()),
-                key="movimento_para_excluir",
-            )
-            movimento_selecionado = opcoes_movimentos[movimento_label]
-            confirmar_movimento = st.checkbox(
-                "Confirmo a exclusão desta movimentação.",
-                key="confirmar_exclusao_movimentacao",
-            )
-            if st.button(
-                "Excluir movimentação selecionada",
-                key="excluir_movimentacao_individual",
-            ):
-                if confirmar_movimento:
-                    excluir_movimentacao(movimento_selecionado["id"])
-                    st.success("Movimentação excluída.")
-                    st.rerun()
-                else:
-                    st.warning("Marque a confirmação antes de excluir.")
-
-            confirmar_historico = st.checkbox(
-                "Confirmo que quero apagar TODO o histórico de movimentações.",
-                key="confirmar_exclusao_todas_movimentacoes",
-            )
-            if st.button(
-                "Excluir todo o histórico de movimentações",
-                key="excluir_historico_completo",
-            ):
-                if confirmar_historico:
-                    excluir_todas_movimentacoes()
-                    st.success("Histórico de movimentações excluído.")
-                    st.rerun()
-                else:
-                    st.warning("Marque a confirmação antes de excluir.")
-        else:
-            st.info("Não há movimentações para excluir.")
-
-        st.divider()
+    with st.expander("Gerenciar estoque", expanded=False):
         st.subheader("Limpar quantidades do estoque")
         st.warning(
             "Esta ação define a quantidade de todos os produtos como zero. "
@@ -1108,7 +1226,7 @@ elif pagina == "Estoque":
         st.subheader("Excluir todos os produtos")
         st.warning(
             "Esta ação remove permanentemente todos os produtos cadastrados e suas fotos. "
-            "As vendas e as movimentações já registradas serão preservadas."
+            "As vendas e os registros anteriores serão preservados."
         )
         confirmar_produtos = st.checkbox(
             "Confirmo que quero excluir TODOS os produtos cadastrados.",
@@ -1129,7 +1247,7 @@ elif pagina == "Estoque":
 elif pagina == "Catálogo Visual":
     st.subheader("Catálogo visual de produtos")
 
-    todos_produtos_catalogo = listar_produtos()
+    todos_produtos_catalogo = listar_produtos(incluir_fotos=False)
     if todos_produtos_catalogo:
         total_catalogo = len(todos_produtos_catalogo)
         unidades_catalogo = sum(int(p["quantidade"]) for p in todos_produtos_catalogo)
@@ -1148,52 +1266,116 @@ elif pagina == "Catálogo Visual":
                 key="busca_catalogo_visual",
             ).strip().casefold()
         with filtro_col2:
-            categorias_catalogo = ["Todas as categorias"] + listar_categorias()
-            categoria_catalogo = st.selectbox(
-                "Categoria", categorias_catalogo, key="categoria_catalogo_visual"
+            categorias_catalogo = listar_categorias()
+            categorias_selecionadas_catalogo = st.multiselect(
+                "Categorias",
+                options=categorias_catalogo,
+                default=[],
+                placeholder="Selecione uma ou mais categorias...",
+                help="Se escolher várias categorias, serão exibidos produtos que pertençam a pelo menos uma delas.",
+                key="categorias_catalogo_visual",
             )
 
-        disponibilidade_catalogo = st.radio(
-            "Disponibilidade", ["Todos", "Disponíveis", "Sem estoque"],
-            horizontal=True, key="disponibilidade_catalogo_visual",
-        )
+        filtro_col3, filtro_col4 = st.columns([1, 2])
+        with filtro_col3:
+            disponibilidade_catalogo = st.selectbox(
+                "Disponibilidade", ["Todos", "Disponíveis", "Sem estoque"],
+                key="disponibilidade_catalogo_visual",
+            )
+        with filtro_col4:
+            ordem_catalogo = st.selectbox(
+                "Ordenar por",
+                ["Nome (A–Z)", "Nome (Z–A)", "Menor preço", "Maior preço", "Maior quantidade"],
+                key="ordem_catalogo_visual",
+            )
 
         produtos_catalogo = [
             produto for produto in todos_produtos_catalogo
-            if busca_catalogo in produto["nome"].casefold()
+            if busca_catalogo in (produto["nome"] or "").casefold()
             or busca_catalogo in (produto["categoria"] or "").casefold()
         ]
-        if categoria_catalogo != "Todas as categorias":
-            produtos_catalogo = [p for p in produtos_catalogo if p["categoria"] == categoria_catalogo]
+        if categorias_selecionadas_catalogo:
+            selecionadas = set(categorias_selecionadas_catalogo)
+            produtos_catalogo = [
+                p for p in produtos_catalogo
+                if selecionadas.intersection(separar_categorias(p["categoria"]))
+            ]
         if disponibilidade_catalogo == "Disponíveis":
             produtos_catalogo = [p for p in produtos_catalogo if int(p["quantidade"]) > 0]
         elif disponibilidade_catalogo == "Sem estoque":
             produtos_catalogo = [p for p in produtos_catalogo if int(p["quantidade"]) <= 0]
 
+        if ordem_catalogo == "Nome (A–Z)":
+            produtos_catalogo.sort(key=lambda p: (p["nome"] or "").casefold())
+        elif ordem_catalogo == "Nome (Z–A)":
+            produtos_catalogo.sort(key=lambda p: (p["nome"] or "").casefold(), reverse=True)
+        elif ordem_catalogo == "Menor preço":
+            produtos_catalogo.sort(key=lambda p: float(p["preco"] or 0))
+        elif ordem_catalogo == "Maior preço":
+            produtos_catalogo.sort(key=lambda p: float(p["preco"] or 0), reverse=True)
+        elif ordem_catalogo == "Maior quantidade":
+            produtos_catalogo.sort(key=lambda p: int(p["quantidade"] or 0), reverse=True)
+
+        # Quando a pesquisa/filtros mudam, volta para a primeira página para evitar
+        # uma página antiga inválida ou uma lista aparentemente vazia.
+        assinatura_filtros_catalogo = (
+            busca_catalogo,
+            tuple(sorted(categorias_selecionadas_catalogo)),
+            disponibilidade_catalogo,
+            ordem_catalogo,
+        )
+        assinatura_anterior = st.session_state.get("assinatura_filtros_catalogo")
+        if assinatura_anterior != assinatura_filtros_catalogo:
+            st.session_state["pagina_catalogo_visual"] = 1
+            st.session_state["assinatura_filtros_catalogo"] = assinatura_filtros_catalogo
+
         st.divider()
         if produtos_catalogo:
-            st.caption(f"Exibindo {len(produtos_catalogo)} produto(s)")
-            for inicio in range(0, len(produtos_catalogo), 3):
+            total_filtrados_catalogo = len(produtos_catalogo)
+            controle_col1, controle_col2 = st.columns([1, 2])
+            with controle_col1:
+                itens_por_pagina = st.selectbox(
+                    "Produtos por página", [6, 12, 18, 24, 30], index=1,
+                    key="itens_por_pagina_catalogo",
+                    help="Comece com 12 produtos para reduzir o trabalho de renderização, especialmente no celular.",
+                )
+            total_paginas_catalogo = max(1, (total_filtrados_catalogo + itens_por_pagina - 1) // itens_por_pagina)
+            pagina_salva = st.session_state.get("pagina_catalogo_visual", 1)
+            if not isinstance(pagina_salva, int) or pagina_salva < 1 or pagina_salva > total_paginas_catalogo:
+                st.session_state["pagina_catalogo_visual"] = 1
+            with controle_col2:
+                pagina_catalogo = st.selectbox(
+                    "Página", list(range(1, total_paginas_catalogo + 1)),
+                    format_func=lambda pagina: f"Página {pagina} de {total_paginas_catalogo}",
+                    key="pagina_catalogo_visual",
+                )
+            inicio_pagina_catalogo = (pagina_catalogo - 1) * itens_por_pagina
+            produtos_exibidos_catalogo = produtos_catalogo[inicio_pagina_catalogo:inicio_pagina_catalogo + itens_por_pagina]
+            fotos_catalogo = listar_fotos_produtos([p["id"] for p in produtos_exibidos_catalogo])
+            for produto in produtos_exibidos_catalogo:
+                produto["foto"] = fotos_catalogo.get(int(produto["id"]))
+            st.caption(f"Exibindo {len(produtos_exibidos_catalogo)} de {total_filtrados_catalogo} produto(s) · Página {pagina_catalogo} de {total_paginas_catalogo}")
+            for inicio in range(0, len(produtos_exibidos_catalogo), 3):
                 colunas_catalogo = st.columns(3)
-                for coluna, produto in zip(colunas_catalogo, produtos_catalogo[inicio:inicio + 3]):
+                for coluna, produto in zip(colunas_catalogo, produtos_exibidos_catalogo[inicio:inicio + 3]):
                     with coluna:
                         with st.container(border=True):
                             if produto.get("foto"):
-                                st.image(bytes(produto["foto"]), use_container_width=True)
+                                st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
                             else:
                                 st.markdown("<div style='text-align:center; padding:42px 8px; background:#f1f3f5; border-radius:8px; font-size:42px;'>📦</div>", unsafe_allow_html=True)
                                 st.caption("Foto não cadastrada")
                             st.markdown(f"**{produto['nome']}**")
-                            st.caption(f"Categoria: {produto['categoria']}")
+                            st.caption(f"Categoria: {produto['categoria'] or 'Sem categoria'}")
                             qtd = int(produto["quantidade"])
                             if qtd > 0:
-                                st.success(f"Quantidade disponível: {qtd}")
+                                st.markdown(f"<span style='color:#16794b;font-weight:600;'>● Em estoque · {qtd} unidade(s)</span>", unsafe_allow_html=True)
                             else:
-                                st.warning("Quantidade disponível: 0 — sem estoque")
-                            st.write(f"Preço: {moeda(produto['preco'])}")
+                                st.markdown("<span style='color:#b42318;font-weight:600;'>● Fora de estoque</span>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size:1.15rem;font-weight:700;margin-top:0.35rem;'>{moeda(produto['preco'])}</div>", unsafe_allow_html=True)
 
         else:
-            st.info("Nenhum produto corresponde aos filtros selecionados.")
+            st.info("Nenhum produto corresponde aos filtros selecionados. Experimente alterar a pesquisa ou os filtros.")
     else:
         st.info("Ainda não há produtos cadastrados. Cadastre um produto para ele aparecer automaticamente neste catálogo.")
 
@@ -1287,204 +1469,87 @@ elif pagina == "Controle de Dívidas":
                             st.error(str(erro))
 
     st.divider()
-    st.subheader("Histórico de dívidas quitadas")
-    quitadas = [v for v in vendas if v["status_pagamento"] == "Pago" and v["forma_pagamento"] == "A pagar"]
-    if quitadas:
-        st.dataframe([{
-            "Venda": f"#{v['id']}",
-            "Pessoa": v["cliente"],
-            "Produto": v["produto_nome"],
-            "Total da venda": moeda(v["total"]),
-            "Valor recebido": moeda(v.get("valor_pago") or v["total"]),
-            "Data prevista para pagar": v.get("data_prevista_pagamento") or "—",
-            "Data da venda": v["criado_em"],
-        } for v in quitadas], use_container_width=True, hide_index=True)
-    else:
-        st.info("As dívidas quitadas aparecerão aqui depois que o saldo chegar a zero.")
+    st.subheader("Dívidas quitadas")
+    st.info("Quando uma dívida é totalmente paga, ela desaparece desta tela. O registro interno é mantido apenas para os indicadores financeiros.")
+
 
 
 # ------------------------------------------
-# 10. RELATÓRIOS E EXPORTAÇÃO
-# ------------------------------------------
-elif pagina == "Relatórios e Exportação":
-    st.subheader("Relatórios e exportação")
-
-    hoje_relatorio = date.today()
-    col_data1, col_data2 = st.columns(2)
-    with col_data1:
-        data_inicio = st.date_input("Data inicial", value=hoje_relatorio.replace(day=1), key="rel_data_inicio")
-    with col_data2:
-        data_fim = st.date_input("Data final", value=hoje_relatorio, key="rel_data_fim")
-
-    if data_inicio > data_fim:
-        st.error("A data inicial não pode ser posterior à data final.")
-    else:
-        with conectar() as conexao:
-            produtos_rel = pd.read_sql_query("""
-                SELECT id AS "ID", codigo AS "Código", nome AS "Produto", categoria AS "Categoria",
-                       custo AS "Custo unitário (R$)", preco AS "Preço de venda (R$)",
-                       quantidade AS "Quantidade em estoque",
-                       ROUND((custo * quantidade)::numeric, 2) AS "Valor de custo em estoque (R$)",
-                       ROUND((preco * quantidade)::numeric, 2) AS "Valor potencial de venda (R$)", criado_em AS "Cadastrado em"
-                FROM produtos ORDER BY LOWER(nome)
-            """, conexao.raw)
-            vendas_rel = pd.read_sql_query("""
-                SELECT id AS "Venda", (criado_em AT TIME ZONE 'America/Sao_Paulo')::date AS "Data",
-                       produto_nome AS "Produto", cliente AS "Pessoa", telefone_cliente AS "Telefone",
-                       quantidade AS "Quantidade", valor_unitario AS "Preço unitário (R$)",
-                       total AS "Total (R$)", COALESCE(valor_pago, 0) AS "Valor recebido (R$)",
-                       ROUND((total - COALESCE(valor_pago, 0))::numeric, 2) AS "Saldo devedor (R$)",
-                       forma_pagamento AS "Forma de pagamento",
-                       status_pagamento AS "Status", custo_unitario AS "Custo unitário (R$)", 
-                       ROUND(((COALESCE(valor_unitario, 0) - COALESCE(custo_unitario, 0)) * quantidade)::numeric, 2) AS "Lucro bruto estimado (R$)"
-                FROM vendas
-                WHERE (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= %s AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date <= %s
-                ORDER BY criado_em DESC
-            """, conexao.raw, params=(data_inicio.isoformat(), data_fim.isoformat()))
-            movimentacoes_rel = pd.read_sql_query("""
-                SELECT id AS "Movimentação", (criado_em AT TIME ZONE 'America/Sao_Paulo')::date AS "Data", produto_nome AS "Produto",
-                       tipo AS "Tipo", quantidade AS "Quantidade movimentada", saldo_anterior AS "Saldo anterior",
-                       saldo_novo AS "Saldo novo", observacao AS "Observação"
-                FROM movimentacoes_estoque
-                WHERE (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= %s AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date <= %s
-                ORDER BY criado_em DESC
-            """, conexao.raw, params=(data_inicio.isoformat(), data_fim.isoformat()))
-
-        dividas_rel = vendas_rel[vendas_rel["Status"].isin(["Devendo", "Parcial"])].copy() if not vendas_rel.empty else vendas_rel.copy()
-        vendas_pagas_rel = vendas_rel if not vendas_rel.empty else vendas_rel.copy()
-        faturamento_rel = float(vendas_pagas_rel["Valor recebido (R$)"].fillna(0).sum()) if not vendas_pagas_rel.empty else 0.0
-        pendente_rel = float(dividas_rel["Saldo devedor (R$)"].fillna(0).sum()) if not dividas_rel.empty else 0.0
-        lucro_rel = float(vendas_pagas_rel["Lucro bruto estimado (R$)"].fillna(0).sum()) if not vendas_pagas_rel.empty else 0.0
-
-        st.markdown(f"**Período selecionado:** {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Vendas no período", len(vendas_rel))
-        m2.metric("Valor recebido", moeda(faturamento_rel))
-        m3.metric("Dívidas em aberto", moeda(pendente_rel))
-        m4.metric("Lucro bruto estimado", moeda(lucro_rel))
-
-        aba_vendas, aba_dividas, aba_produtos, aba_movimentos = st.tabs(["Vendas", "Dívidas", "Estoque atual", "Movimentações"])
-        with aba_vendas:
-            st.write("Vendas registradas no período selecionado.")
-            st.dataframe(vendas_rel, use_container_width=True, hide_index=True)
-            st.download_button("Baixar vendas (CSV)", data=vendas_rel.to_csv(index=False).encode("utf-8-sig"), file_name=f"vendas_{data_inicio}_{data_fim}.csv", mime="text/csv", disabled=vendas_rel.empty)
-        with aba_dividas:
-            st.write("Vendas que ainda estão marcadas como pendentes no momento da consulta, dentro do período selecionado.")
-            st.dataframe(dividas_rel, use_container_width=True, hide_index=True)
-            st.download_button("Baixar dívidas (CSV)", data=dividas_rel.to_csv(index=False).encode("utf-8-sig"), file_name=f"dividas_{data_inicio}_{data_fim}.csv", mime="text/csv", disabled=dividas_rel.empty)
-        with aba_produtos:
-            st.write("Posição atual do estoque, independentemente das datas escolhidas.")
-            st.dataframe(produtos_rel, use_container_width=True, hide_index=True)
-            st.download_button("Baixar estoque atual (CSV)", data=produtos_rel.to_csv(index=False).encode("utf-8-sig"), file_name="estoque_atual_mabel_store.csv", mime="text/csv", disabled=produtos_rel.empty)
-        with aba_movimentos:
-            st.write("Entradas e saídas registradas no período selecionado.")
-            st.dataframe(movimentacoes_rel, use_container_width=True, hide_index=True)
-            st.download_button("Baixar movimentações (CSV)", data=movimentacoes_rel.to_csv(index=False).encode("utf-8-sig"), file_name=f"movimentacoes_{data_inicio}_{data_fim}.csv", mime="text/csv", disabled=movimentacoes_rel.empty)
-
-        pacote = io.BytesIO()
-        with zipfile.ZipFile(pacote, mode="w", compression=zipfile.ZIP_DEFLATED) as arquivo_zip:
-            arquivo_zip.writestr("vendas.csv", vendas_rel.to_csv(index=False).encode("utf-8-sig"))
-            arquivo_zip.writestr("dividas_pendentes.csv", dividas_rel.to_csv(index=False).encode("utf-8-sig"))
-            arquivo_zip.writestr("estoque_atual.csv", produtos_rel.to_csv(index=False).encode("utf-8-sig"))
-            arquivo_zip.writestr("movimentacoes_estoque.csv", movimentacoes_rel.to_csv(index=False).encode("utf-8-sig"))
-        st.divider()
-        st.download_button(
-            "📦 Baixar todos os relatórios (ZIP)", data=pacote.getvalue(),
-            file_name=f"relatorios_mabel_store_{data_inicio}_{data_fim}.zip",
-            mime="application/zip", use_container_width=True,
-        )
-        st.info("Os arquivos CSV abrem no Excel e em outros programas de planilhas. O ZIP reúne todos os relatórios em um único download. Exportar não altera nem apaga os dados do sistema.")
-
-
-# ------------------------------------------
-# 11. VENDAS
+# 10. VENDAS
 # ------------------------------------------
 elif pagina == "Vendas":
     st.subheader("Registrar uma venda")
-    produtos_disponiveis = [p for p in listar_produtos() if p["quantidade"] > 0]
+    produtos_disponiveis = [p for p in listar_produtos() if int(p["quantidade"]) > 0]
 
     if not produtos_disponiveis:
         st.warning("Não há produtos com estoque disponível. Cadastre produtos ou reponha o estoque antes de registrar uma venda.")
     else:
         busca_produto_venda = st.text_input(
-            "Pesquisar produto pelo nome",
-            placeholder="Digite o nome do produto para encontrar mais rápido...",
+            "Pesquisar produto pelo nome ou categoria",
+            placeholder="Digite nome ou categoria para encontrar mais rápido...",
             key="busca_produto_venda",
         ).strip().casefold()
-
-        produtos_filtrados = [
-            p for p in produtos_disponiveis
-            if busca_produto_venda in p["nome"].casefold()
-        ]
-
-        if not produtos_filtrados:
-            st.warning("Nenhum produto com estoque disponível corresponde à pesquisa. Tente outro nome.")
+        produtos_filtrados = [p for p in produtos_disponiveis if
+            busca_produto_venda in p["nome"].casefold() or busca_produto_venda in (p.get("categoria") or "").casefold()]
+        opcoes_produtos = {f"{p['nome']} — {moeda(p['preco'])} (estoque: {p['quantidade']}) · ID {p['id']}": p for p in produtos_filtrados}
+        if not opcoes_produtos:
+            st.warning("Nenhum produto com estoque disponível corresponde à pesquisa.")
         else:
-            opcoes_produtos = {
-                f"{p['nome']} — {moeda(p['preco'])} (estoque: {p['quantidade']})": p
-                for p in produtos_filtrados
-            }
-            produto_escolhido = st.selectbox(
-                "Produto vendido",
-                list(opcoes_produtos.keys()),
-                help="Você também pode digitar no campo de pesquisa acima para filtrar os produtos.",
+            selecionados_labels = st.multiselect(
+                "Produtos desta venda", options=list(opcoes_produtos.keys()),
+                help="Selecione um ou vários produtos para a mesma compra.", key="produtos_venda_multiplos"
             )
-            produto = opcoes_produtos[produto_escolhido]
+            itens_venda = []
+            total_previa = 0.0
+            for idx, label in enumerate(selecionados_labels):
+                produto_selecionado = opcoes_produtos[label]
+                col_prod, col_qtd = st.columns([3, 1])
+                with col_prod:
+                    st.write(f"**{produto_selecionado['nome']}** — {moeda(produto_selecionado['preco'])} cada")
+                with col_qtd:
+                    qtd = st.number_input(
+                        "Quantidade", min_value=1, max_value=int(produto_selecionado["quantidade"]),
+                        value=1, step=1, key=f"qtd_venda_produto_{produto_selecionado['id']}"
+                    )
+                total_previa += float(produto_selecionado["preco"]) * int(qtd)
+                itens_venda.append({"produto_id": produto_selecionado["id"], "quantidade": int(qtd)})
 
-            with st.form("form_venda", clear_on_submit=True):
+            if itens_venda:
+                st.metric("Total da venda", moeda(total_previa))
+            with st.form("form_venda_varios", clear_on_submit=False):
                 cliente = st.text_input("Nome de quem comprou *", placeholder="Nome do cliente").strip()
-                telefone_cliente = st.text_input(
-                    "Telefone de quem comprou (opcional)",
-                    placeholder="Ex.: (19) 99999-9999",
-                    help="Você pode deixar este campo vazio.",
-                ).strip()
-                quantidade_vendida = st.number_input(
-                    "Quantidade vendida", min_value=1,
-                    max_value=int(produto["quantidade"]), value=1, step=1
-                )
-                forma_pagamento = st.selectbox(
-                    "Forma de pagamento", ["Pix", "Dinheiro", "A pagar"]
-                )
+                telefone_cliente = st.text_input("Telefone de quem comprou (opcional)", placeholder="Ex.: (19) 99999-9999").strip()
+                forma_pagamento = st.selectbox("Forma de pagamento", ["Pix", "Dinheiro", "A pagar"])
                 data_prevista = st.date_input(
                     "Data prevista para pagamento (se for 'A pagar')",
                     value=date.today() + timedelta(days=7),
-                    help="Escolha quando o cliente pretende pagar. Essa data só será salva para vendas marcadas como 'A pagar'.",
+                    help="Só será salva para vendas marcadas como 'A pagar'."
                 )
-                st.caption(f"Total desta venda: {moeda(produto['preco'] * quantidade_vendida)}")
-                registrar = st.form_submit_button(
-                    "Registrar venda e baixar estoque", use_container_width=True
-                )
-
+                registrar = st.form_submit_button("Registrar venda e baixar estoque", use_container_width=True)
                 if registrar:
                     if not cliente:
                         st.error("Informe o nome de quem comprou.")
+                    elif not itens_venda:
+                        st.error("Selecione pelo menos um produto.")
                     else:
                         try:
-                            registrar_venda(
-                                produto["id"], cliente, int(quantidade_vendida),
-                                forma_pagamento, telefone_cliente,
-                                data_prevista.isoformat() if forma_pagamento == "A pagar" else None,
+                            total_registrado, grupo_id = registrar_venda_varios(
+                                itens_venda, cliente, forma_pagamento, telefone_cliente,
+                                data_prevista.isoformat() if forma_pagamento == "A pagar" else None
                             )
                             if forma_pagamento == "A pagar":
-                                st.success(
-                                    f"Venda registrada para {cliente}. O estoque foi atualizado "
-                                    f"e o pagamento ficou como 'Devendo'. Data prevista: {data_prevista.strftime('%d/%m/%Y')}. "
-                                    "Você poderá registrar pagamentos parciais no Controle de Dívidas."
-                                )
+                                st.success(f"Venda anotada para controle da dívida! Total: {moeda(total_registrado)}. O estoque de todos os itens foi atualizado.")
                             else:
-                                st.success(
-                                    f"Venda registrada para {cliente}. O estoque foi atualizado "
-                                    "e o pagamento foi marcado como 'Pago'."
-                                )
+                                st.success(f"Venda paga concluída! Total: {moeda(total_registrado)}. O estoque foi atualizado e ela não aparecerá no histórico de vendas.")
                             st.rerun()
-                        except ValueError as erro:
-                            st.error(str(erro))
+                        except (ValueError, psycopg2.Error) as erro:
+                            st.error(f"Não foi possível registrar a venda: {erro}")
 
     st.divider()
-    st.subheader("Histórico de vendas e pagamentos")
+    st.subheader("Vendas a pagar")
     vendas = listar_vendas()
     if not vendas:
-        st.info("Ainda não há vendas registradas.")
+        st.info("Não há vendas pendentes. Vendas pagas não ficam registradas no histórico.")
     else:
         total_pendente = sum(max(0, float(v["total"] or 0) - float(v.get("valor_pago") or 0)) for v in vendas if v["status_pagamento"] in ("Devendo", "Parcial"))
         total_recebido = sum(float(v.get("valor_pago") or 0) for v in vendas)
@@ -1517,30 +1582,23 @@ elif pagina == "Vendas":
                                     "Data": pagamento["criado_em"],
                                     "Valor": moeda(pagamento["valor"]),
                                 } for pagamento in pagamentos_venda], use_container_width=True, hide_index=True)
+                    grupo = venda.get("venda_grupo_id")
+                    identificador_grupo = f" · Código da venda: {grupo[:8]}" if grupo else ""
                     st.caption(
-                        f"Pagamento: {venda['forma_pagamento']} · Data: {venda['criado_em']}"
+                        f"Pagamento: {venda['forma_pagamento']} · Data: {venda['criado_em']}{identificador_grupo}"
                     )
                 with direita:
-                    if venda["status_pagamento"] == "Pago":
-                        st.success("Pago")
-                    elif venda["status_pagamento"] == "Parcial":
+                    if venda["status_pagamento"] == "Parcial":
                         st.info("Pagamento parcial")
                     else:
                         st.warning("Devendo")
-                        if venda["forma_pagamento"] == "A pagar" and st.button(
-                            "Quitar saldo", key=f"pagar_{venda['id']}",
-                            use_container_width=True
-                        ):
-                            marcar_venda_paga(venda["id"])
-                            st.rerun()
 
     # Gerenciamento de exclusão: separado do registro para evitar cliques acidentais.
     st.divider()
     with st.expander("🗑️ Gerenciar exclusão de vendas", expanded=False):
         st.warning(
-            "A exclusão é permanente. Os pagamentos vinculados também serão removidos. "
-            "Quando o produto ainda existir no cadastro, a quantidade vendida será devolvida ao estoque. "
-            "O relatório de vendas será atualizado automaticamente."
+            "A exclusão manual é permanente. Os pagamentos vinculados também serão removidos. "
+            "Quando o produto ainda existir no cadastro, a quantidade vendida será devolvida ao estoque."
         )
         vendas_para_excluir = listar_vendas()
         if not vendas_para_excluir:

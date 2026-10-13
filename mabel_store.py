@@ -724,6 +724,11 @@ st.markdown("""
 
     /* Ajustes responsivos: preservam as imagens originais e evitam colunas estreitas no celular. */
     @media (max-width: 768px) {
+        html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .block-container {
+            max-width: 100% !important;
+            overflow-x: clip !important;
+            box-sizing: border-box !important;
+        }
         .block-container {
             padding: 0.8rem 0.75rem 2rem 0.75rem !important;
             max-width: 100% !important;
@@ -736,14 +741,33 @@ st.markdown("""
             gap: 0.65rem !important;
         }
         /* Mantém as colunas do catálogo lado a lado no celular. */
+        [class*="st-key-catalogo_grade_produtos"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow-x: clip !important;
+        }
         [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
             flex-wrap: nowrap !important;
             gap: 0.5rem !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
         }
         [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 1 1 0% !important;
-            width: 50% !important;
+            flex: 0 0 calc(50% - 0.25rem) !important;
+            width: calc(50% - 0.25rem) !important;
+            max-width: calc(50% - 0.25rem) !important;
             min-width: 0 !important;
+            box-sizing: border-box !important;
+        }
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlock"],
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"] {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
         }
         [class*="st-key-catalogo_grade_produtos"] [data-testid="stImage"] img {
             width: 100% !important;

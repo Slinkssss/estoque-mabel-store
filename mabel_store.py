@@ -1400,7 +1400,7 @@ elif pagina == "Catálogo Visual":
             controle_col1, controle_col2 = st.columns([1, 2])
             with controle_col1:
                 itens_por_pagina = st.selectbox(
-                    "Produtos por página", [6, 12, 18, 24, 30], index=0,
+                    "Produtos por página", [6, 12, 18, 24, 30], index=4,
                     key="itens_por_pagina_catalogo",
                     help="Comece com 12 produtos para reduzir o trabalho de renderização, especialmente no celular.",
                 )

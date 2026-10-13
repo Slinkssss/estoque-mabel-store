@@ -751,17 +751,43 @@ st.markdown("""
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 0.5rem !important;
+            align-items: stretch !important;
+            gap: 0.35rem !important;
             width: 100% !important;
             max-width: 100% !important;
             min-width: 0 !important;
         }
         [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 0 0 calc(50% - 0.25rem) !important;
-            width: calc(50% - 0.25rem) !important;
-            max-width: calc(50% - 0.25rem) !important;
+            flex: 0 0 calc(50% - 0.175rem) !important;
+            width: calc(50% - 0.175rem) !important;
+            max-width: calc(50% - 0.175rem) !important;
             min-width: 0 !important;
+            padding: 0 !important;
             box-sizing: border-box !important;
+        }
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"],
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"] > div {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding-left: 0.35rem !important;
+            padding-right: 0.35rem !important;
+            box-sizing: border-box !important;
+        }
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stMarkdownContainer"] {
+            min-width: 0 !important;
+            overflow-wrap: anywhere !important;
+            font-size: 0.82rem !important;
+            line-height: 1.25 !important;
+        }
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stCaptionContainer"] {
+            font-size: 0.72rem !important;
+            overflow-wrap: anywhere !important;
+        }
+        [class*="st-key-catalogo_grade_produtos"] [data-testid="stImage"] img {
+            width: 100% !important;
+            max-height: 145px !important;
+            object-fit: contain !important;
         }
         [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlock"],
         [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"] {

@@ -961,39 +961,7 @@ elif pagina == "Cadastrar Produtos":
                 except psycopg2.IntegrityError:
                     st.error("Não foi possível cadastrar o produto. Tente novamente.")
 
-    st.divider()
-    st.subheader("Produtos cadastrados")
-    busca = st.text_input("Pesquisar por nome ou categoria", placeholder="Digite para pesquisar...")
-    produtos = listar_produtos(busca, incluir_fotos=False)
-    if produtos:
-        total_produtos_lista = len(produtos)
-        pagina_produtos = st.number_input(
-            "Página de produtos", min_value=1,
-            max_value=max(1, (total_produtos_lista + 29) // 30),
-            value=1, step=1, key="pagina_produtos_cadastro"
-        )
-        inicio_produtos = (int(pagina_produtos) - 1) * 30
-        produtos_exibidos = produtos[inicio_produtos:inicio_produtos + 30]
-        fotos_produtos = listar_fotos_produtos([p["id"] for p in produtos_exibidos])
-        for produto in produtos_exibidos:
-            produto["foto"] = fotos_produtos.get(int(produto["id"]))
-        st.caption(f"Exibindo {len(produtos_exibidos)} de {total_produtos_lista} produto(s)")
-        for inicio in range(0, len(produtos_exibidos), 3):
-            colunas = st.columns(3)
-            for coluna, produto in zip(colunas, produtos_exibidos[inicio:inicio + 3]):
-                with coluna:
-                    with st.container(border=True):
-                        if produto.get("foto"):
-                            st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
-                        else:
-                            st.caption("Sem foto cadastrada")
-                        st.markdown(f"**{produto['nome']}**")
-                        st.caption(f"Categoria: {produto['categoria']}")
-                        st.write(f"Preço de venda: {moeda(produto['preco'])}")
-                        st.write(f"Quantidade: {produto['quantidade']}")
-
-        st.divider()
-        st.subheader("Editar valores de um produto")
+    with st.expander("Editar valores de um produto"):
         st.caption("Altere o custo e/ou o preço de venda de um produto já cadastrado. As vendas anteriores permanecem com os valores registrados na época da venda.")
         pesquisa_edicao = st.text_input(
             "Pesquisar produto para editar",
@@ -1001,7 +969,7 @@ elif pagina == "Cadastrar Produtos":
             key="pesquisa_produto_edicao_precos",
         ).strip().lower()
         produtos_para_editar = [
-            p for p in listar_produtos(busca, incluir_fotos=False)
+            p for p in listar_produtos("", incluir_fotos=False)
             if pesquisa_edicao in str(p["nome"]).lower()
             or pesquisa_edicao in str(p["categoria"]).lower()
             or pesquisa_edicao in str(p["id"])
@@ -1045,8 +1013,7 @@ elif pagina == "Cadastrar Produtos":
         else:
             st.info("Nenhum produto corresponde à pesquisa. Tente outro nome ou categoria.")
 
-        st.divider()
-        st.subheader("Editar categorias e imagem de um produto")
+    with st.expander("Editar categorias e imagem de um produto"):
         todos_para_editar = listar_produtos("", incluir_fotos=False)
         if todos_para_editar:
             opcoes_produtos_edicao = {f"{p['nome']} (ID {p['id']})": p for p in todos_para_editar}
@@ -1081,42 +1048,74 @@ elif pagina == "Cadastrar Produtos":
                     except (ValueError, psycopg2.Error) as erro:
                         st.error(f"Não foi possível salvar as alterações: {erro}")
 
-        with st.expander("Excluir um produto"):
-            st.warning("A exclusão de um produto pode ser permanente. Confira o nome antes de confirmar.")
-            pesquisa_exclusao = st.text_input(
-                "Pesquisar produto para excluir",
-                placeholder="Digite o nome, a categoria ou o ID...",
-                key="pesquisa_produto_exclusao",
-            ).strip().lower()
-            produtos_para_excluir = [
-                p for p in listar_produtos("")
-                if pesquisa_exclusao in str(p["nome"]).lower()
-                or pesquisa_exclusao in str(p["categoria"]).lower()
-                or pesquisa_exclusao in str(p["id"])
-            ]
-            if produtos_para_excluir:
-                opcoes = {
-                    f"{p['nome']} — {p['categoria']} (ID {p['id']})": p["id"]
-                    for p in produtos_para_excluir
-                }
-                escolhido = st.selectbox(
-                    "Selecione o produto encontrado",
-                    list(opcoes.keys()),
-                    key="produto_selecionado_para_excluir",
-                )
-                confirmar = st.checkbox(
-                    "Confirmo que quero excluir este produto.",
-                    key="confirmar_exclusao_produto",
-                )
-                if st.button("Excluir produto", type="secondary"):
-                    if confirmar:
-                        excluir_produto(opcoes[escolhido])
-                        st.success("Produto excluído do catálogo.")
-                        st.rerun()
-                    else:
-                        st.warning("Marque a confirmação antes de excluir.")
-            else:
-                st.info("Nenhum produto corresponde à pesquisa. Tente outro nome, categoria ou ID.")
+    with st.expander("Excluir um produto"):
+        st.warning("A exclusão de um produto pode ser permanente. Confira o nome antes de confirmar.")
+        pesquisa_exclusao = st.text_input(
+            "Pesquisar produto para excluir",
+            placeholder="Digite o nome, a categoria ou o ID...",
+            key="pesquisa_produto_exclusao",
+        ).strip().lower()
+        produtos_para_excluir = [
+            p for p in listar_produtos("")
+            if pesquisa_exclusao in str(p["nome"]).lower()
+            or pesquisa_exclusao in str(p["categoria"]).lower()
+            or pesquisa_exclusao in str(p["id"])
+        ]
+        if produtos_para_excluir:
+            opcoes = {
+                f"{p['nome']} — {p['categoria']} (ID {p['id']})": p["id"]
+                for p in produtos_para_excluir
+            }
+            escolhido = st.selectbox(
+                "Selecione o produto encontrado",
+                list(opcoes.keys()),
+                key="produto_selecionado_para_excluir",
+            )
+            confirmar = st.checkbox(
+                "Confirmo que quero excluir este produto.",
+                key="confirmar_exclusao_produto",
+            )
+            if st.button("Excluir produto", type="secondary"):
+                if confirmar:
+                    excluir_produto(opcoes[escolhido])
+                    st.success("Produto excluído do catálogo.")
+                    st.rerun()
+                else:
+                    st.warning("Marque a confirmação antes de excluir.")
+        else:
+            st.info("Nenhum produto corresponde à pesquisa. Tente outro nome, categoria ou ID.")
+
+    st.divider()
+    st.subheader("Produtos cadastrados")
+    busca = st.text_input("Pesquisar por nome ou categoria", placeholder="Digite para pesquisar...")
+    produtos = listar_produtos(busca, incluir_fotos=False)
+    if produtos:
+        total_produtos_lista = len(produtos)
+        pagina_produtos = st.number_input(
+            "Página de produtos", min_value=1,
+            max_value=max(1, (total_produtos_lista + 29) // 30),
+            value=1, step=1, key="pagina_produtos_cadastro"
+        )
+        inicio_produtos = (int(pagina_produtos) - 1) * 30
+        produtos_exibidos = produtos[inicio_produtos:inicio_produtos + 30]
+        fotos_produtos = listar_fotos_produtos([p["id"] for p in produtos_exibidos])
+        for produto in produtos_exibidos:
+            produto["foto"] = fotos_produtos.get(int(produto["id"]))
+        st.caption(f"Exibindo {len(produtos_exibidos)} de {total_produtos_lista} produto(s)")
+        for inicio in range(0, len(produtos_exibidos), 3):
+            colunas = st.columns(3)
+            for coluna, produto in zip(colunas, produtos_exibidos[inicio:inicio + 3]):
+                with coluna:
+                    with st.container(border=True):
+                        if produto.get("foto"):
+                            st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
+                        else:
+                            st.caption("Sem foto cadastrada")
+                        st.markdown(f"**{produto['nome']}**")
+                        st.caption(f"Categoria: {produto['categoria']}")
+                        st.write(f"Preço de venda: {moeda(produto['preco'])}")
+                        st.write(f"Quantidade: {produto['quantidade']}")
+
     else:
         st.info("Nenhum produto encontrado.")
 

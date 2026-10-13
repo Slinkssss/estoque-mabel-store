@@ -718,6 +718,29 @@ st.markdown("""
     }
 
 
+    /* Grade do catálogo: 3 produtos por linha no computador e 2 no celular. */
+    div[class*="st-key-catalogo_grade_responsiva"] div[data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 0.8rem !important;
+    }
+    div[class*="st-key-catalogo_grade_responsiva"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        width: auto !important;
+        min-width: 0 !important;
+        flex: unset !important;
+    }
+    @media (max-width: 768px) {
+        div[class*="st-key-catalogo_grade_responsiva"] div[data-testid="stHorizontalBlock"] {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+        }
+        div[class*="st-key-catalogo_grade_responsiva"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: auto !important;
+            min-width: 0 !important;
+            flex: unset !important;
+        }
+    }
+
     /* Ajustes responsivos: preservam as imagens originais e evitam colunas estreitas no celular. */
     @media (max-width: 768px) {
         .block-container {
@@ -1354,24 +1377,27 @@ elif pagina == "Catálogo Visual":
             for produto in produtos_exibidos_catalogo:
                 produto["foto"] = fotos_catalogo.get(int(produto["id"]))
             st.caption(f"Exibindo {len(produtos_exibidos_catalogo)} de {total_filtrados_catalogo} produto(s) · Página {pagina_catalogo} de {total_paginas_catalogo}")
-            for inicio in range(0, len(produtos_exibidos_catalogo), 3):
-                colunas_catalogo = st.columns(3)
-                for coluna, produto in zip(colunas_catalogo, produtos_exibidos_catalogo[inicio:inicio + 3]):
-                    with coluna:
-                        with st.container(border=True):
-                            if produto.get("foto"):
-                                st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
-                            else:
-                                st.markdown("<div style='text-align:center; padding:42px 8px; background:#f1f3f5; border-radius:8px; font-size:42px;'>📦</div>", unsafe_allow_html=True)
-                                st.caption("Foto não cadastrada")
-                            st.markdown(f"**{produto['nome']}**")
-                            st.caption(f"Categoria: {produto['categoria'] or 'Sem categoria'}")
-                            qtd = int(produto["quantidade"])
-                            if qtd > 0:
-                                st.markdown(f"<span style='color:#16794b;font-weight:600;'>● Em estoque · {qtd} unidade(s)</span>", unsafe_allow_html=True)
-                            else:
-                                st.markdown("<span style='color:#b42318;font-weight:600;'>● Fora de estoque</span>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='font-size:1.15rem;font-weight:700;margin-top:0.35rem;'>{moeda(produto['preco'])}</div>", unsafe_allow_html=True)
+            # Agrupa até 6 produtos: CSS mostra 3 por linha no computador e 2 no celular.
+            for inicio in range(0, len(produtos_exibidos_catalogo), 6):
+                lote_produtos = produtos_exibidos_catalogo[inicio:inicio + 6]
+                with st.container(key=f"catalogo_grade_responsiva_{inicio}"):
+                    colunas_catalogo = st.columns(len(lote_produtos))
+                    for coluna, produto in zip(colunas_catalogo, lote_produtos):
+                        with coluna:
+                            with st.container(border=True):
+                                if produto.get("foto"):
+                                    st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
+                                else:
+                                    st.markdown("<div style='text-align:center; padding:42px 8px; background:#f1f3f5; border-radius:8px; font-size:42px;'>📦</div>", unsafe_allow_html=True)
+                                    st.caption("Foto não cadastrada")
+                                st.markdown(f"**{produto['nome']}**")
+                                st.caption(f"Categoria: {produto['categoria'] or 'Sem categoria'}")
+                                qtd = int(produto["quantidade"])
+                                if qtd > 0:
+                                    st.markdown(f"<span style='color:#16794b;font-weight:600;'>● Em estoque · {qtd} unidade(s)</span>", unsafe_allow_html=True)
+                                else:
+                                    st.markdown("<span style='color:#b42318;font-weight:600;'>● Fora de estoque</span>", unsafe_allow_html=True)
+                                st.markdown(f"<div style='font-size:1.15rem;font-weight:700;margin-top:0.35rem;'>{moeda(produto['preco'])}</div>", unsafe_allow_html=True)
 
         else:
             st.info("Nenhum produto corresponde aos filtros selecionados. Experimente alterar a pesquisa ou os filtros.")

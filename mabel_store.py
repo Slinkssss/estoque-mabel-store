@@ -1,4 +1,6 @@
 import uuid
+import base64
+import html
 import psycopg2
 from psycopg2.extras import DictCursor
 from pathlib import Path
@@ -1420,25 +1422,133 @@ elif pagina == "Catálogo Visual":
             st.caption(f"Exibindo {len(produtos_exibidos_catalogo)} de {total_filtrados_catalogo} produto(s) · Página {pagina_catalogo} de {total_paginas_catalogo}")
             # Duas colunas reais no Streamlit: evita que o CSS responsivo empilhe
             # os produtos em uma única coluna no celular.
-            for inicio in range(0, len(produtos_exibidos_catalogo), 2):
-                with st.container(key=f"catalogo_grade_produtos_{inicio}"):
-                    colunas_catalogo = st.columns(2, gap="small")
-                    for coluna, produto in zip(colunas_catalogo, produtos_exibidos_catalogo[inicio:inicio + 2]):
-                        with coluna:
-                            with st.container(border=True):
-                                if produto.get("foto"):
-                                    st.image(bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"], use_container_width=True)
-                                else:
-                                    st.markdown("<div style='text-align:center; padding:24px 8px; background:#f1f3f5; border-radius:8px; font-size:30px;'>📦</div>", unsafe_allow_html=True)
-                                    st.caption("Foto não cadastrada")
-                                st.markdown(f"**{produto['nome']}**")
-                                st.caption(f"Categoria: {produto['categoria'] or 'Sem categoria'}")
-                                qtd = int(produto["quantidade"])
-                                if qtd > 0:
-                                    st.markdown(f"<span style='color:#16794b;font-weight:600;'>● Em estoque · {qtd} unidade(s)</span>", unsafe_allow_html=True)
-                                else:
-                                    st.markdown("<span style='color:#b42318;font-weight:600;'>● Fora de estoque</span>", unsafe_allow_html=True)
-                                st.markdown(f"<div style='font-size:1.0rem;font-weight:700;margin-top:0.35rem;'>{moeda(produto['preco'])}</div>", unsafe_allow_html=True)
+                # Grade HTML responsiva: não depende das colunas do Streamlit,
+            # que podem empilhar os produtos em telas estreitas.
+            cards_catalogo = []
+            for produto in produtos_exibidos_catalogo:
+                nome_produto = html.escape(str(produto.get("nome") or "Produto"))
+                categoria_produto = html.escape(str(produto.get("categoria") or "Sem categoria"))
+                qtd = int(produto.get("quantidade") or 0)
+                if produto.get("foto"):
+                    foto_bytes = bytes(produto["foto"])
+                    foto_b64 = base64.b64encode(foto_bytes).decode("ascii")
+                    if foto_bytes.startswith(b"\x89PNG"):
+                        mime_foto = "image/png"
+                    elif foto_bytes.startswith(b"RIFF") and foto_bytes[8:12] == b"WEBP":
+                        mime_foto = "image/webp"
+                    elif foto_bytes.startswith(b"GIF8"):
+                        mime_foto = "image/gif"
+                    else:
+                        mime_foto = "image/jpeg"
+                    imagem_html = (
+                        f'<img src="data:{mime_foto};base64,{foto_b64}" '
+                        f'alt="{nome_produto}" class="mabel-produto-foto">'
+                    )
+                else:
+                    imagem_html = '<div class="mabel-produto-sem-foto">📦</div>'
+
+                if qtd > 0:
+                    status_html = f'<div class="mabel-produto-status mabel-em-estoque">● Em estoque · {qtd} unidade(s)</div>'
+                else:
+                    status_html = '<div class="mabel-produto-status mabel-fora-estoque">● Fora de estoque</div>'
+
+                cards_catalogo.append(
+                    '<article class="mabel-produto-card">'
+                    f'<div class="mabel-produto-imagem">{imagem_html}</div>'
+                    f'<div class="mabel-produto-nome">{nome_produto}</div>'
+                    f'<div class="mabel-produto-categoria">Categoria: {categoria_produto}</div>'
+                    f'{status_html}'
+                    f'<div class="mabel-produto-preco">{html.escape(str(moeda(produto["preco"])))}</div>'
+                    '</article>'
+                )
+
+            st.markdown(
+                """
+                <style>
+                .mabel-produtos-grade {
+                    display: grid !important;
+                    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                    gap: 10px !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                    align-items: stretch;
+                }
+                .mabel-produto-card {
+                    min-width: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                    overflow: hidden;
+                    border: 1px solid #e6e0e8;
+                    border-radius: 12px;
+                    padding: 8px;
+                    background: #ffffff;
+                }
+                .mabel-produto-imagem {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    width: 100%;
+                    height: 125px;
+                    margin-bottom: 8px;
+                    overflow: hidden;
+                }
+                .mabel-produto-foto {
+                    display: block;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    height: 125px !important;
+                    object-fit: contain !important;
+                }
+                .mabel-produto-sem-foto {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    width: 100%;
+                    height: 100%;
+                    background: #f1f3f5;
+                    border-radius: 8px;
+                    font-size: 30px;
+                }
+                .mabel-produto-nome {
+                    font-size: 0.88rem;
+                    line-height: 1.25;
+                    font-weight: 700;
+                    overflow-wrap: anywhere;
+                    margin: 4px 0 8px;
+                    color: #4d4053;
+                }
+                .mabel-produto-categoria {
+                    font-size: 0.72rem;
+                    line-height: 1.3;
+                    overflow-wrap: anywhere;
+                    color: #857a8b;
+                    margin-bottom: 8px;
+                }
+                .mabel-produto-status {
+                    font-size: 0.72rem;
+                    line-height: 1.3;
+                    font-weight: 600;
+                    overflow-wrap: anywhere;
+                    margin-bottom: 10px;
+                }
+                .mabel-em-estoque { color: #16794b; }
+                .mabel-fora-estoque { color: #b42318; }
+                .mabel-produto-preco {
+                    font-size: 0.95rem;
+                    line-height: 1.25;
+                    font-weight: 800;
+                    overflow-wrap: anywhere;
+                    color: #5a4a60;
+                }
+                </style>
+                <div class="mabel-produtos-grade">
+                """
+                + "".join(cards_catalogo)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
         else:
             st.info("Nenhum produto corresponde aos filtros selecionados. Experimente alterar a pesquisa ou os filtros.")

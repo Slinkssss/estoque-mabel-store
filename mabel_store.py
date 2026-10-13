@@ -735,15 +735,14 @@ st.markdown("""
             flex-wrap: wrap !important;
             gap: 0.65rem !important;
         }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 1 1 100% !important;
-            width: 100% !important;
-            min-width: 100% !important;
+        /* Mantém as colunas do catálogo lado a lado no celular. */
+        [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            gap: 0.5rem !important;
         }
-        /* O catálogo conserva dois produtos por linha no celular. */
         [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 0 0 calc(50% - 0.35rem) !important;
-            width: calc(50% - 0.35rem) !important;
+            flex: 1 1 0% !important;
+            width: 50% !important;
             min-width: 0 !important;
         }
         [class*="st-key-catalogo_grade_produtos"] [data-testid="stImage"] img {
@@ -1369,10 +1368,12 @@ elif pagina == "Catálogo Visual":
             for produto in produtos_exibidos_catalogo:
                 produto["foto"] = fotos_catalogo.get(int(produto["id"]))
             st.caption(f"Exibindo {len(produtos_exibidos_catalogo)} de {total_filtrados_catalogo} produto(s) · Página {pagina_catalogo} de {total_paginas_catalogo}")
-            for inicio in range(0, len(produtos_exibidos_catalogo), 3):
+            # Duas colunas reais no Streamlit: evita que o CSS responsivo empilhe
+            # os produtos em uma única coluna no celular.
+            for inicio in range(0, len(produtos_exibidos_catalogo), 2):
                 with st.container(key=f"catalogo_grade_produtos_{inicio}"):
-                    colunas_catalogo = st.columns(3)
-                    for coluna, produto in zip(colunas_catalogo, produtos_exibidos_catalogo[inicio:inicio + 3]):
+                    colunas_catalogo = st.columns(2, gap="small")
+                    for coluna, produto in zip(colunas_catalogo, produtos_exibidos_catalogo[inicio:inicio + 2]):
                         with coluna:
                             with st.container(border=True):
                                 if produto.get("foto"):

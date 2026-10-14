@@ -1,12 +1,11 @@
 import uuid
-import base64
 import html
 import psycopg2
 from psycopg2.extras import DictCursor
 from pathlib import Path
 from datetime import date, timedelta
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageOps
 
 import pandas as pd
 import streamlit as st
@@ -39,11 +38,8 @@ class ConexaoPostgres:
             if tipo is None:
                 self.raw.commit()
                 if self.dirty:
-                    # Invalida apenas os caches afetados pela alteração no banco.
-                    for nome_cache in ("listar_produtos", "listar_fotos_produtos", "listar_categorias", "listar_vendas"):
-                        funcao_cache = globals().get(nome_cache)
-                        if funcao_cache is not None and hasattr(funcao_cache, "clear"):
-                            funcao_cache.clear()
+                    # Atualiza os caches depois de qualquer alteração no banco.
+                    st.cache_data.clear()
             else:
                 self.raw.rollback()
         finally:
@@ -95,6 +91,26 @@ def criar_tabelas():
             )
         # Identificador opcional para agrupar itens que pertencem à mesma venda.
         conexao.execute("ALTER TABLE vendas ADD COLUMN IF NOT EXISTS venda_grupo_id TEXT")
+        # Preço promocional opcional; NULL significa que o produto usa o preço normal.
+        conexao.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS preco_promocional NUMERIC(12,2)")
+        # Descrição opcional exibida no catálogo público apenas quando preenchida.
+        conexao.execute("ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS descricao TEXT")
+        # Produtos escolhidos para a faixa de destaques do catálogo público.
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS public.catalogo_destaques (
+                produto_id BIGINT PRIMARY KEY REFERENCES public.produtos(id) ON DELETE CASCADE,
+                ordem INTEGER NOT NULL DEFAULT 0,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        # Produtos escolhidos para aparecer no carrossel de promoções.
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS public.catalogo_promocoes (
+                produto_id BIGINT PRIMARY KEY REFERENCES public.produtos(id) ON DELETE CASCADE,
+                ordem INTEGER NOT NULL DEFAULT 0,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
 
 
 
@@ -112,15 +128,16 @@ def otimizar_foto(arquivo, limite=900, qualidade=82):
         raise ValueError("Não foi possível processar a imagem. Tente outro arquivo JPG ou PNG.") from erro
 
 
-def cadastrar_produto(nome, categoria, custo, preco, quantidade, foto):
+def cadastrar_produto(nome, categoria, custo, preco, quantidade, foto, descricao=""):
     codigo = uuid.uuid4().hex
+    descricao_limpa = str(descricao or "").strip() or None
     with conectar() as conexao:
         produto_id = conexao.execute("""
             INSERT INTO produtos
-                (codigo, nome, categoria, custo, preco, quantidade, foto)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (codigo, nome, categoria, custo, preco, quantidade, foto, descricao)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
-        """, (codigo, nome, categoria, custo, preco, quantidade, foto)).fetchone()[0]
+        """, (codigo, nome, categoria, custo, preco, quantidade, foto, descricao_limpa)).fetchone()[0]
         if int(quantidade) > 0:
             conexao.execute("""
                 INSERT INTO movimentacoes_estoque
@@ -139,7 +156,7 @@ def separar_categorias(valor):
 @st.cache_data(ttl=20, show_spinner=False)
 def listar_produtos(busca="", incluir_fotos=True):
     with conectar() as conexao:
-        colunas = "*" if incluir_fotos else "id, codigo, nome, categoria, custo, preco, quantidade"
+        colunas = "*" if incluir_fotos else "id, codigo, nome, categoria, custo, preco, preco_promocional, quantidade, descricao"
         if busca:
             resultado = conexao.execute(f"""
                 SELECT {colunas} FROM produtos
@@ -155,9 +172,8 @@ def listar_produtos(busca="", incluir_fotos=True):
         return produtos
 
 
-@st.cache_data(ttl=120, show_spinner=False)
 def listar_fotos_produtos(ids):
-    """Mantém fotos da página em cache para evitar consultas repetidas ao banco."""
+    """Busca imagens somente para os produtos que serão exibidos na tela."""
     ids = [int(item) for item in ids]
     if not ids:
         return {}
@@ -199,14 +215,28 @@ def atualizar_foto_produto(produto_id, foto):
         conexao.execute("UPDATE produtos SET foto = ? WHERE id = ?", (foto, int(produto_id)))
 
 
-def atualizar_precos_produto(produto_id, custo, preco):
-    """Atualiza o custo e o preço de venda de um produto existente."""
-    if float(custo) < 0 or float(preco) < 0:
-        raise ValueError("Os valores não podem ser negativos.")
+def atualizar_descricao_produto(produto_id, descricao):
+    """Salva a descrição opcional de um produto já cadastrado."""
+    descricao_limpa = str(descricao or "").strip() or None
     with conectar() as conexao:
         conexao.execute(
-            "UPDATE produtos SET custo = ?, preco = ? WHERE id = ?",
-            (float(custo), float(preco), int(produto_id)),
+            "UPDATE public.produtos SET descricao = ? WHERE id = ?",
+            (descricao_limpa, int(produto_id)),
+        )
+
+
+def atualizar_precos_produto(produto_id, custo, preco, preco_promocional=None):
+    """Atualiza preços normais e promocionais de um produto."""
+    custo, preco = float(custo), float(preco)
+    promo = None if preco_promocional in (None, 0, 0.0, "") else float(preco_promocional)
+    if custo < 0 or preco < 0 or (promo is not None and promo < 0):
+        raise ValueError("Os valores não podem ser negativos.")
+    if promo is not None and (promo <= 0 or promo >= preco):
+        raise ValueError("O preço promocional deve ser maior que zero e menor que o preço normal.")
+    with conectar() as conexao:
+        conexao.execute(
+            "UPDATE produtos SET custo = ?, preco = ?, preco_promocional = ? WHERE id = ?",
+            (custo, preco, promo, int(produto_id)),
         )
 
 
@@ -328,7 +358,7 @@ def registrar_venda(produto_id, cliente, quantidade, forma_pagamento, telefone_c
     with conectar() as conexao:
         conexao.execute("BEGIN IMMEDIATE")
         produto = conexao.execute(
-            "SELECT id, nome, preco, custo, quantidade FROM produtos WHERE id = ?",
+            "SELECT id, nome, preco, preco_promocional, custo, quantidade FROM produtos WHERE id = ?",
             (produto_id,),
         ).fetchone()
 
@@ -341,7 +371,8 @@ def registrar_venda(produto_id, cliente, quantidade, forma_pagamento, telefone_c
                 f"Estoque insuficiente. Há apenas {produto['quantidade']} unidade(s)."
             )
 
-        total = float(produto["preco"]) * int(quantidade)
+        preco_aplicado = float(produto["preco_promocional"] or produto["preco"])
+        total = preco_aplicado * int(quantidade)
         status_pagamento = "Devendo" if forma_pagamento == "A pagar" else "Pago"
         # Mantém o registro interno para os indicadores financeiros; a tela de histórico
         # mostra somente as vendas que ainda têm saldo a receber.
@@ -354,7 +385,7 @@ def registrar_venda(produto_id, cliente, quantidade, forma_pagamento, telefone_c
         """, (
             produto["id"], produto["nome"], cliente.strip(),
             telefone_cliente.strip() or None, int(quantidade),
-            float(produto["preco"]), float(produto["custo"]), total,
+            preco_aplicado, float(produto["custo"]), total,
             forma_pagamento, status_pagamento, total if status_pagamento == "Pago" else 0.0,
             data_prevista_pagamento if forma_pagamento == "A pagar" else None,
         ))
@@ -385,7 +416,7 @@ def registrar_venda_varios(itens, cliente, forma_pagamento, telefone_cliente="",
         total_geral = 0.0
         for item in itens:
             produto = conexao.execute(
-                "SELECT id, nome, preco, custo, quantidade FROM produtos WHERE id = ? FOR UPDATE",
+                "SELECT id, nome, preco, preco_promocional, custo, quantidade FROM produtos WHERE id = ? FOR UPDATE",
                 (int(item["produto_id"]),),
             ).fetchone()
             quantidade = int(item["quantidade"])
@@ -395,12 +426,13 @@ def registrar_venda_varios(itens, cliente, forma_pagamento, telefone_cliente="",
                 raise ValueError(f"A quantidade de {produto['nome']} precisa ser pelo menos 1.")
             if int(produto["quantidade"]) < quantidade:
                 raise ValueError(f"Estoque insuficiente para {produto['nome']}. Há apenas {produto['quantidade']} unidade(s).")
-            total_item = round(float(produto["preco"]) * quantidade, 2)
+            preco_aplicado = float(produto["preco_promocional"] or produto["preco"])
+            total_item = round(preco_aplicado * quantidade, 2)
             total_geral += total_item
-            preparados.append((produto, quantidade, total_item))
+            preparados.append((produto, quantidade, total_item, preco_aplicado))
 
         status_pagamento = "Devendo" if forma_pagamento == "A pagar" else "Pago"
-        for produto, quantidade, total_item in preparados:
+        for produto, quantidade, total_item, preco_aplicado in preparados:
             # Mantém o registro para os indicadores financeiros, mas a tela de histórico
             # exibe somente vendas com saldo pendente.
             conexao.execute("""
@@ -411,7 +443,7 @@ def registrar_venda_varios(itens, cliente, forma_pagamento, telefone_cliente="",
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 produto["id"], produto["nome"], cliente.strip(), telefone_cliente.strip() or None,
-                quantidade, float(produto["preco"]), float(produto["custo"]), total_item,
+                quantidade, preco_aplicado, float(produto["custo"]), total_item,
                 forma_pagamento, status_pagamento, total_item if status_pagamento == "Pago" else 0.0,
                 data_prevista_pagamento if forma_pagamento == "A pagar" else None, grupo_id,
             ))
@@ -659,6 +691,178 @@ st.markdown("""
         background: #FFFCFE;
     }
 
+    /* Catálogo Visual: segue o mesmo padrão de cartões do catálogo online. */
+    .st-key-catalogo-visual-grid [data-testid="stHorizontalBlock"] {
+        align-items: stretch;
+        gap: 1rem;
+    }
+    .st-key-catalogo-visual-grid [data-testid="column"] {
+        min-width: 0 !important;
+        display: flex;
+    }
+    .st-key-catalogo-visual-grid [data-testid="column"] > div {
+        width: 100%;
+        min-width: 0;
+    }
+    .st-key-catalogo-visual-grid [data-testid="stVerticalBlockBorderWrapper"] {
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        padding: 0 !important;
+        overflow: hidden;
+        box-sizing: border-box;
+        background: #FFFFFF !important;
+        border: 1px solid #E8DDEC !important;
+        border-radius: 18px !important;
+        box-shadow: 0 5px 18px rgba(89,54,111,.07);
+        transition: box-shadow .18s ease, border-color .18s ease;
+    }
+    .st-key-catalogo-visual-grid [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: #D8C3E7 !important;
+        box-shadow: 0 8px 23px rgba(89,54,111,.11);
+    }
+    .st-key-catalogo-visual-grid [data-testid="stVerticalBlockBorderWrapper"] > div {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        gap: .5rem;
+        padding-bottom: .8rem;
+    }
+    .st-key-catalogo-visual-grid [data-testid="stImage"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        aspect-ratio: 1 / 1;
+        margin: 0 !important;
+        padding: 9px;
+        box-sizing: border-box;
+        overflow: hidden;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: #FFFFFF !important;
+        border: 1px solid #F0EAF4;
+        border-radius: 17px 17px 13px 13px;
+    }
+    .st-key-catalogo-visual-grid [data-testid="stImage"] img {
+        display: block;
+        width: 100% !important;
+        height: auto !important;
+        max-width: 100% !important;
+        aspect-ratio: 1 / 1;
+        object-fit: contain !important;
+        object-position: center center !important;
+        background: #FFFFFF;
+        border-radius: 9px;
+        padding: 3px;
+        box-sizing: border-box;
+    }
+    .st-key-catalogo-visual-grid [data-testid="stMarkdownContainer"] {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        padding: 0 .9rem;
+        box-sizing: border-box;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-placeholder {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #76518F;
+        background: #FFFFFF;
+        border: 1px solid #F0EAF4;
+        border-radius: 17px 17px 13px 13px;
+        box-sizing: border-box;
+        font-size: 2.6rem;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-name {
+        color: #30283A;
+        font-size: 1rem;
+        font-weight: 750;
+        line-height: 1.35;
+        min-height: 2.7em;
+        margin: .25rem 0 .4rem;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-category {
+        display: inline-block;
+        width: fit-content;
+        max-width: 100%;
+        color: #59366F;
+        background: #EDE4F3;
+        font-size: .74rem;
+        line-height: 1.3;
+        margin: .2rem 0 .5rem;
+        padding: .24rem .62rem;
+        border-radius: 30px;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-quantity {
+        display: block;
+        color: #766A7D;
+        font-size: .78rem;
+        line-height: 1.35;
+        font-weight: 600;
+        margin: .05rem 0 .5rem;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-price {
+        color: #59366F;
+        font-size: 1.18rem;
+        line-height: 1.35;
+        font-weight: 800;
+        margin: .35rem 0 .35rem;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .catalog-visual-old-price {
+        color: #827787;
+        text-decoration: line-through;
+        font-size: .86rem;
+        margin-top: .25rem;
+    }
+    .st-key-catalogo-visual-grid .description-toggle {
+        width: 100%;
+        max-width: 100%;
+        margin: .15rem 0 .1rem;
+        box-sizing: border-box;
+    }
+    .st-key-catalogo-visual-grid .description-toggle summary {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        list-style: none;
+        cursor: pointer;
+        text-align: center;
+        background: #E3D3F0;
+        color: #59366F;
+        border: 1px solid #D5BFE7;
+        border-radius: 11px;
+        padding: .62rem .55rem;
+        font-size: .88rem;
+        line-height: 1.3;
+        font-weight: 750;
+        overflow-wrap: anywhere;
+    }
+    .st-key-catalogo-visual-grid .description-toggle summary::-webkit-details-marker { display: none; }
+    .st-key-catalogo-visual-grid .description-toggle summary::after { content: "＋"; margin-left: .45rem; font-weight: 800; }
+    .st-key-catalogo-visual-grid .description-toggle[open] summary::after { content: "−"; }
+    .st-key-catalogo-visual-grid .description-toggle summary:hover { background: #D7C0E8; }
+    .st-key-catalogo-visual-grid .description-content {
+        margin-top: .45rem;
+        padding: .7rem;
+        border: 1px solid #E8DDEC;
+        border-radius: 10px;
+        background: #FCFAFD;
+        color: #4F4557;
+        font-size: .88rem;
+        line-height: 1.45;
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+        box-sizing: border-box;
+    }
+
     /* Campos e formulários */
     .stTextInput input, .stNumberInput input, .stTextArea textarea,
     [data-baseweb="select"] > div, [data-testid="stDateInput"] input {
@@ -721,114 +925,46 @@ st.markdown("""
     @media (max-width: 768px) {
         .block-container { padding: 1rem 1rem 2rem; }
         [data-testid="stMetric"] { padding: .8rem; }
-    }
 
-
-    /* Ajustes responsivos: preservam as imagens originais e evitam colunas estreitas no celular. */
-    @media (max-width: 768px) {
-        html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .block-container {
+        /* No celular, a grade se reorganiza em 2 produtos por linha. */
+        .st-key-catalogo-visual-grid { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+        .st-key-catalogo-visual-grid [data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            align-items: stretch !important;
+            column-gap: .6rem !important;
+            row-gap: .7rem !important;
+            width: 100% !important;
             max-width: 100% !important;
-            overflow-x: clip !important;
+            min-width: 0 !important;
             box-sizing: border-box !important;
         }
-        .block-container {
-            padding: 0.8rem 0.75rem 2rem 0.75rem !important;
-            max-width: 100% !important;
-        }
-        h1 { font-size: 1.55rem !important; }
-        h2 { font-size: 1.35rem !important; }
-        h3 { font-size: 1.15rem !important; }
-        div[data-testid="stHorizontalBlock"] {
-            flex-wrap: wrap !important;
-            gap: 0.65rem !important;
-        }
-        /* Mantém as colunas do catálogo lado a lado no celular. */
-        [class*="st-key-catalogo_grade_produtos"] {
+        .st-key-catalogo-visual-grid [data-testid="column"] {
             width: 100% !important;
             max-width: 100% !important;
             min-width: 0 !important;
-            overflow-x: clip !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: stretch !important;
-            gap: 0.35rem !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 0 0 calc(50% - 0.175rem) !important;
-            width: calc(50% - 0.175rem) !important;
-            max-width: calc(50% - 0.175rem) !important;
-            min-width: 0 !important;
+            flex: none !important;
+            margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
         }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"],
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"] > div {
-            width: 100% !important;
-            max-width: 100% !important;
+        .st-key-catalogo-visual-grid [data-testid="stVerticalBlockBorderWrapper"] {
             min-width: 0 !important;
-            padding-left: 0.35rem !important;
-            padding-right: 0.35rem !important;
-            box-sizing: border-box !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stMarkdownContainer"] {
-            min-width: 0 !important;
-            overflow-wrap: anywhere !important;
-            font-size: 0.82rem !important;
-            line-height: 1.25 !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stCaptionContainer"] {
-            font-size: 0.72rem !important;
-            overflow-wrap: anywhere !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stImage"] img {
             width: 100% !important;
-            max-height: 145px !important;
-            object-fit: contain !important;
+            border-radius: 14px !important;
         }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlock"],
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stVerticalBlockBorderWrapper"] {
-            min-width: 0 !important;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-        }
-        [class*="st-key-catalogo_grade_produtos"] [data-testid="stImage"] img {
-            width: 100% !important;
-            height: auto !important;
-            object-fit: contain !important;
-        }
-        div[data-testid="stMetric"] {
-            padding: 0.65rem !important;
-        }
-        div[data-testid="stImage"] img {
-            max-width: 100% !important;
-            height: auto !important;
-            object-fit: contain !important;
-        }
-        div[data-testid="stVerticalBlock"] > div {
-            min-width: 0;
-        }
-        .stButton > button, .stDownloadButton > button {
-            width: 100%;
-            min-height: 2.7rem;
-        }
-        input, textarea, [data-baseweb="select"] {
-            max-width: 100% !important;
-        }
+        .st-key-catalogo-visual-grid [data-testid="stVerticalBlockBorderWrapper"] > div { gap: .4rem; padding-bottom: .6rem; }
+        .st-key-catalogo-visual-grid [data-testid="stImage"] { padding: 5px; border-radius: 13px 13px 11px 11px; }
+        .st-key-catalogo-visual-grid [data-testid="stMarkdownContainer"] { padding-left: .6rem; padding-right: .6rem; }
+        .st-key-catalogo-visual-grid .catalog-visual-name { font-size: .88rem; line-height: 1.3; min-height: 2.6em; margin: .2rem 0 .35rem; }
+        .st-key-catalogo-visual-grid .catalog-visual-category { font-size: .68rem; line-height: 1.25; padding: .22rem .42rem; }
+        .st-key-catalogo-visual-grid .catalog-visual-quantity { font-size: .68rem; line-height: 1.3; margin: .05rem 0 .42rem; }
+        .st-key-catalogo-visual-grid .catalog-visual-price { font-size: 1rem; }
+        .st-key-catalogo-visual-grid .catalog-visual-old-price { font-size: .75rem; }
+        .st-key-catalogo-visual-grid .description-toggle { width: 100%; max-width: 100%; margin-left: 0; margin-right: 0; }
+        .st-key-catalogo-visual-grid .description-toggle summary { padding: .55rem .3rem; font-size: .72rem; line-height: 1.2; }
+        .st-key-catalogo-visual-grid .description-content { padding: .55rem; font-size: .78rem; }
     }
-    @media (max-width: 420px) {
-        .block-container {
-            padding-left: 0.55rem !important;
-            padding-right: 0.55rem !important;
-        }
-        div[data-testid="stMetricValue"] { font-size: 1.35rem !important; }
-    }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -839,13 +975,13 @@ st.markdown("""
 if (PASTA / "logo_store.png").exists():
     st.sidebar.image(str(PASTA / "logo_store.png"), width=170)
 else:
-    st.sidebar.title("📦 Mabel Store")
+    st.sidebar.caption("Catálogo e gestão da loja")
 
 st.sidebar.caption("Sistema de estoque e vendas")
 st.sidebar.divider()
 pagina = st.sidebar.radio(
     "Menu Principal:",
-    ["Dashboard", "Cadastrar Produtos", "Estoque", "Catálogo Visual", "Controle de Dívidas", "Vendas"],
+    ["Dashboard", "Cadastrar Produtos", "Estoque", "Catálogo Visual", "Personalizar catálogo", "Controle de Dívidas", "Vendas"],
 )
 
 with conectar() as conexao:
@@ -857,7 +993,7 @@ with conectar() as conexao:
 
 total_produtos, total_unidades, valor_estoque = totais
 
-st.title("Estoque Mabel Store")
+st.image(str(PASTA / "logo_store.png"), width=250)
 st.caption("Gestão da loja · Produtos, estoque, vendas e financeiro")
 st.divider()
 
@@ -1011,6 +1147,13 @@ elif pagina == "Cadastrar Produtos":
             preco = st.number_input("Preço de venda (R$)", min_value=0.0, value=0.0, step=1.0, format="%.2f")
             quantidade = st.number_input("Quantidade inicial", min_value=0, value=0, step=1)
 
+        descricao = st.text_area(
+            "Descrição do produto (opcional)",
+            placeholder="Ex.: material, tamanho, fragrância, conteúdo da embalagem ou outros detalhes...",
+            height=100,
+            help="Se preencher a descrição, aparecerá um botão 'Ver descrição' para esse produto no catálogo público.",
+        ).strip()
+
         enviar = st.form_submit_button("Salvar produto", use_container_width=True)
         if enviar:
             if not nome:
@@ -1021,135 +1164,182 @@ elif pagina == "Cadastrar Produtos":
                 categoria_final = " | ".join(categorias_finais) if categorias_finais else "Sem categoria"
                 foto = otimizar_foto(foto_enviada.getvalue()) if foto_enviada is not None else None
                 try:
-                    cadastrar_produto(nome, categoria_final, custo, preco, quantidade, foto)
+                    cadastrar_produto(nome, categoria_final, custo, preco, quantidade, foto, descricao)
                     st.success(f"Produto '{nome}' cadastrado!")
                     st.rerun()
                 except psycopg2.IntegrityError:
                     st.error("Não foi possível cadastrar o produto. Tente novamente.")
 
-    with st.expander("Editar valores de um produto"):
-        st.caption("Altere o custo e/ou o preço de venda de um produto já cadastrado. As vendas anteriores permanecem com os valores registrados na época da venda.")
-        pesquisa_edicao = st.text_input(
-            "Pesquisar produto para editar",
-            placeholder="Digite o nome ou a categoria do produto...",
-            key="pesquisa_produto_edicao_precos",
-        ).strip().lower()
-        produtos_para_editar = [
-            p for p in listar_produtos("", incluir_fotos=False)
-            if pesquisa_edicao in str(p["nome"]).lower()
-            or pesquisa_edicao in str(p["categoria"]).lower()
-            or pesquisa_edicao in str(p["id"])
-        ]
-        if produtos_para_editar:
-            opcoes_edicao = {
+    # Controles de edição ficam antes da lista de produtos, fechados por padrão.
+    # Cada expander funciona como um botão: clique no título para abrir as opções.
+    todos_produtos_edicao = listar_produtos("", incluir_fotos=False)
+
+    with st.expander("📝 Adicionar descrição", expanded=False):
+        if not todos_produtos_edicao:
+            st.info("Cadastre um produto antes de adicionar uma descrição.")
+        else:
+            opcoes_descricao = {
                 f"{p['nome']} — {p['categoria']} (ID {p['id']})": p
-                for p in produtos_para_editar
+                for p in todos_produtos_edicao
             }
-            produto_edicao = st.selectbox(
-                "Selecione o produto encontrado",
-                list(opcoes_edicao.keys()),
-                key="produto_edicao_precos",
+            produto_desc_label = st.selectbox(
+                "Selecione o produto",
+                options=list(opcoes_descricao.keys()),
+                key="produto_editar_descricao",
             )
-            selecionado = opcoes_edicao[produto_edicao]
-            with st.form(f"form_editar_precos_{selecionado['id']}"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    custo_novo = st.number_input(
-                        "Novo preço de custo (R$)", min_value=0.0,
-                        value=float(selecionado["custo"] or 0), step=0.5,
-                        format="%.2f", key=f"custo_edicao_{selecionado['id']}"
-                    )
-                with c2:
-                    preco_novo = st.number_input(
-                        "Novo preço de venda (R$)", min_value=0.0,
-                        value=float(selecionado["preco"] or 0), step=0.5,
-                        format="%.2f", key=f"preco_edicao_{selecionado['id']}"
-                    )
-                salvar_precos = st.form_submit_button(
-                    "Salvar novos valores", use_container_width=True
+            produto_desc = opcoes_descricao[produto_desc_label]
+            with st.form(f"form_editar_descricao_{produto_desc['id']}"):
+                descricao_editada = st.text_area(
+                    "Descrição do produto",
+                    value=str(produto_desc.get("descricao") or ""),
+                    placeholder="Digite a descrição que aparecerá no catálogo público...",
+                    height=120,
+                    key=f"texto_descricao_edicao_{produto_desc['id']}",
                 )
+                salvar_descricao = st.form_submit_button(
+                    "Salvar descrição", use_container_width=True
+                )
+            if salvar_descricao:
+                try:
+                    atualizar_descricao_produto(produto_desc["id"], descricao_editada)
+                    st.success(f"Descrição de '{produto_desc['nome']}' atualizada.")
+                    st.rerun()
+                except Exception as erro:
+                    st.error(f"Não foi possível salvar a descrição: {erro}")
+
+    with st.expander("💰 Editar valores de um produto", expanded=False):
+        st.caption(
+            "Altere custo, preço normal e promoção. Use 0 no preço promocional para desativar a promoção. "
+            "As vendas anteriores mantêm os valores registrados na época da venda."
+        )
+        if not todos_produtos_edicao:
+            st.info("Cadastre um produto antes de editar valores.")
+        else:
+            pesquisa_edicao = st.text_input(
+                "Pesquisar produto para editar",
+                placeholder="Digite o nome, a categoria ou o ID do produto...",
+                key="pesquisa_produto_edicao_precos",
+            ).strip().lower()
+            produtos_para_editar = [
+                p for p in todos_produtos_edicao
+                if pesquisa_edicao in str(p["nome"]).lower()
+                or pesquisa_edicao in str(p["categoria"]).lower()
+                or pesquisa_edicao in str(p["id"])
+            ]
+            if produtos_para_editar:
+                opcoes_edicao = {
+                    f"{p['nome']} — {p['categoria']} (ID {p['id']})": p
+                    for p in produtos_para_editar
+                }
+                produto_edicao = st.selectbox(
+                    "Selecione o produto encontrado",
+                    list(opcoes_edicao.keys()),
+                    key="produto_edicao_precos",
+                )
+                selecionado = opcoes_edicao[produto_edicao]
+                with st.form(f"form_editar_precos_{selecionado['id']}"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        custo_novo = st.number_input(
+                            "Novo preço de custo (R$)", min_value=0.0,
+                            value=float(selecionado["custo"] or 0), step=0.5,
+                            format="%.2f", key=f"custo_edicao_{selecionado['id']}"
+                        )
+                    with c2:
+                        preco_novo = st.number_input(
+                            "Novo preço normal (R$)", min_value=0.0,
+                            value=float(selecionado["preco"] or 0), step=0.5,
+                            format="%.2f", key=f"preco_edicao_{selecionado['id']}"
+                        )
+                    promo_atual = float(selecionado.get("preco_promocional") or 0)
+                    preco_promo_novo = st.number_input(
+                        "Preço promocional (R$) — 0 para desativar", min_value=0.0,
+                        value=promo_atual, step=0.5, format="%.2f",
+                        key=f"promo_edicao_{selecionado['id']}",
+                        help="Se informado, precisa ser menor que o preço normal. O catálogo e as novas vendas usarão este valor."
+                    )
+                    salvar_precos = st.form_submit_button(
+                        "Salvar novos valores", use_container_width=True
+                    )
                 if salvar_precos:
                     try:
-                        atualizar_precos_produto(selecionado["id"], custo_novo, preco_novo)
+                        atualizar_precos_produto(
+                            selecionado["id"], custo_novo, preco_novo, preco_promo_novo
+                        )
                         st.success(f"Valores de '{selecionado['nome']}' atualizados com sucesso!")
                         st.rerun()
                     except (ValueError, psycopg2.Error) as erro:
                         st.error(f"Não foi possível atualizar os valores: {erro}")
+            else:
+                st.info("Nenhum produto corresponde à pesquisa. Tente outro nome ou categoria.")
 
+    with st.expander("🖼️ Editar categoria e imagem de um produto", expanded=False):
+        if not todos_produtos_edicao:
+            st.info("Cadastre um produto antes de editar categorias ou imagens.")
         else:
-            st.info("Nenhum produto corresponde à pesquisa. Tente outro nome ou categoria.")
-
-    with st.expander("Editar categorias e imagem de um produto"):
-        todos_para_editar = listar_produtos("", incluir_fotos=False)
-        if todos_para_editar:
-            opcoes_produtos_edicao = {f"{p['nome']} (ID {p['id']})": p for p in todos_para_editar}
-            nome_produto_edicao = st.selectbox("Selecione o produto cuja imagem ou categorias deseja alterar", list(opcoes_produtos_edicao), key="produto_edicao_categoria_foto")
+            opcoes_produtos_edicao = {
+                f"{p['nome']} — {p['categoria']} (ID {p['id']})": p
+                for p in todos_produtos_edicao
+            }
+            nome_produto_edicao = st.selectbox(
+                "Selecione o produto cuja categoria ou imagem deseja alterar",
+                list(opcoes_produtos_edicao),
+                key="produto_edicao_categoria_foto",
+            )
             produto_categoria_foto = opcoes_produtos_edicao[nome_produto_edicao]
             categorias_atual = separar_categorias(produto_categoria_foto.get("categoria"))
             if categorias_atual == ["Sem categoria"]:
                 categorias_atual = []
-            foto_atual = listar_fotos_produtos([produto_categoria_foto["id"]]).get(int(produto_categoria_foto["id"]))
+            foto_atual = listar_fotos_produtos([produto_categoria_foto["id"]]).get(
+                int(produto_categoria_foto["id"])
+            )
             if foto_atual:
                 st.caption("Imagem atual do produto")
-                st.image(bytes(foto_atual) if isinstance(foto_atual, memoryview) else foto_atual, width=220)
+                st.image(
+                    bytes(foto_atual) if isinstance(foto_atual, memoryview) else foto_atual,
+                    width=220,
+                )
             else:
                 st.info("Este produto ainda não tem imagem cadastrada.")
             with st.form(f"form_categoria_foto_{produto_categoria_foto['id']}"):
                 categorias_escolhidas_edicao = st.multiselect(
-                    "Categorias do produto", options=sorted(set(listar_categorias() + categorias_atual), key=str.casefold),
-                    default=categorias_atual, key=f"categorias_edit_{produto_categoria_foto['id']}"
+                    "Categorias do produto",
+                    options=sorted(set(listar_categorias() + categorias_atual), key=str.casefold),
+                    default=categorias_atual,
+                    key=f"categorias_edit_{produto_categoria_foto['id']}",
                 )
-                categorias_novas_edicao = st.text_input("Adicionar novas categorias (separe por vírgula)", key=f"novas_categorias_edit_{produto_categoria_foto['id']}")
-                nova_foto = st.file_uploader("Escolher nova imagem do produto", type=["png", "jpg", "jpeg", "webp"], key=f"foto_edit_{produto_categoria_foto['id']}", help="Selecione uma imagem para substituir a atual. Se deixar vazio, a imagem atual será mantida.")
-                salvar_categoria_foto = st.form_submit_button("Salvar categorias e imagem", use_container_width=True)
-                if salvar_categoria_foto:
-                    categorias_extra = [c.strip() for c in categorias_novas_edicao.split(",") if c.strip()]
-                    categorias_final_edicao = list(dict.fromkeys(categorias_escolhidas_edicao + categorias_extra))
-                    try:
-                        atualizar_categorias_produto(produto_categoria_foto["id"], categorias_final_edicao)
-                        if nova_foto is not None:
-                            atualizar_foto_produto(produto_categoria_foto["id"], otimizar_foto(nova_foto.getvalue()))
-                        st.success("Categorias e imagem atualizadas com sucesso.")
-                        st.rerun()
-                    except (ValueError, psycopg2.Error) as erro:
-                        st.error(f"Não foi possível salvar as alterações: {erro}")
-
-    with st.expander("Excluir um produto"):
-        st.warning("A exclusão de um produto pode ser permanente. Confira o nome antes de confirmar.")
-        pesquisa_exclusao = st.text_input(
-            "Pesquisar produto para excluir",
-            placeholder="Digite o nome, a categoria ou o ID...",
-            key="pesquisa_produto_exclusao",
-        ).strip().lower()
-        produtos_para_excluir = [
-            p for p in listar_produtos("")
-            if pesquisa_exclusao in str(p["nome"]).lower()
-            or pesquisa_exclusao in str(p["categoria"]).lower()
-            or pesquisa_exclusao in str(p["id"])
-        ]
-        if produtos_para_excluir:
-            opcoes = {
-                f"{p['nome']} — {p['categoria']} (ID {p['id']})": p["id"]
-                for p in produtos_para_excluir
-            }
-            escolhido = st.selectbox(
-                "Selecione o produto encontrado",
-                list(opcoes.keys()),
-                key="produto_selecionado_para_excluir",
-            )
-            confirmar = st.checkbox(
-                "Confirmo que quero excluir este produto.",
-                key="confirmar_exclusao_produto",
-            )
-            if st.button("Excluir produto", type="secondary"):
-                if confirmar:
-                    excluir_produto(opcoes[escolhido])
-                    st.success("Produto excluído do catálogo.")
+                categorias_novas_edicao = st.text_input(
+                    "Adicionar novas categorias (separe por vírgula)",
+                    key=f"novas_categorias_edit_{produto_categoria_foto['id']}",
+                )
+                nova_foto = st.file_uploader(
+                    "Escolher nova imagem do produto",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    key=f"foto_edit_{produto_categoria_foto['id']}",
+                    help="Selecione uma imagem para substituir a atual. Se deixar vazio, a imagem atual será mantida.",
+                )
+                salvar_categoria_foto = st.form_submit_button(
+                    "Salvar categorias e imagem", use_container_width=True
+                )
+            if salvar_categoria_foto:
+                categorias_extra = [
+                    c.strip() for c in categorias_novas_edicao.split(",") if c.strip()
+                ]
+                categorias_final_edicao = list(dict.fromkeys(
+                    categorias_escolhidas_edicao + categorias_extra
+                ))
+                try:
+                    atualizar_categorias_produto(
+                        produto_categoria_foto["id"], categorias_final_edicao
+                    )
+                    if nova_foto is not None:
+                        atualizar_foto_produto(
+                            produto_categoria_foto["id"], otimizar_foto(nova_foto.getvalue())
+                        )
+                    st.success("Categorias e imagem atualizadas com sucesso.")
                     st.rerun()
-                else:
-                    st.warning("Marque a confirmação antes de excluir.")
-        else:
-            st.info("Nenhum produto corresponde à pesquisa. Tente outro nome, categoria ou ID.")
+                except (ValueError, psycopg2.Error) as erro:
+                    st.error(f"Não foi possível salvar as alterações: {erro}")
 
     st.divider()
     st.subheader("Produtos cadastrados")
@@ -1182,6 +1372,42 @@ elif pagina == "Cadastrar Produtos":
                         st.write(f"Preço de venda: {moeda(produto['preco'])}")
                         st.write(f"Quantidade: {produto['quantidade']}")
 
+        with st.expander("Excluir um produto"):
+            st.warning("A exclusão de um produto pode ser permanente. Confira o nome antes de confirmar.")
+            pesquisa_exclusao = st.text_input(
+                "Pesquisar produto para excluir",
+                placeholder="Digite o nome, a categoria ou o ID...",
+                key="pesquisa_produto_exclusao",
+            ).strip().lower()
+            produtos_para_excluir = [
+                p for p in listar_produtos("")
+                if pesquisa_exclusao in str(p["nome"]).lower()
+                or pesquisa_exclusao in str(p["categoria"]).lower()
+                or pesquisa_exclusao in str(p["id"])
+            ]
+            if produtos_para_excluir:
+                opcoes = {
+                    f"{p['nome']} — {p['categoria']} (ID {p['id']})": p["id"]
+                    for p in produtos_para_excluir
+                }
+                escolhido = st.selectbox(
+                    "Selecione o produto encontrado",
+                    list(opcoes.keys()),
+                    key="produto_selecionado_para_excluir",
+                )
+                confirmar = st.checkbox(
+                    "Confirmo que quero excluir este produto.",
+                    key="confirmar_exclusao_produto",
+                )
+                if st.button("Excluir produto", type="secondary"):
+                    if confirmar:
+                        excluir_produto(opcoes[escolhido])
+                        st.success("Produto excluído do catálogo.")
+                        st.rerun()
+                    else:
+                        st.warning("Marque a confirmação antes de excluir.")
+            else:
+                st.info("Nenhum produto corresponde à pesquisa. Tente outro nome, categoria ou ID.")
     else:
         st.info("Nenhum produto encontrado.")
 
@@ -1350,9 +1576,31 @@ elif pagina == "Catálogo Visual":
         with filtro_col4:
             ordem_catalogo = st.selectbox(
                 "Ordenar por",
-                ["Nome (A–Z)", "Nome (Z–A)", "Menor preço", "Maior preço", "Maior quantidade"],
+                ["Nome (A–Z)", "Nome (Z–A)", "Menor preço", "Maior preço", "Menor quantidade", "Maior quantidade"],
                 key="ordem_catalogo_visual",
             )
+
+        # Faixa de preço: os limites iniciais acompanham os produtos cadastrados.
+        precos_cadastrados = [max(0.0, float(p.get("preco") or 0)) for p in todos_produtos_catalogo]
+        menor_preco_cadastrado = min(precos_cadastrados, default=0.0)
+        maior_preco_cadastrado = max(precos_cadastrados, default=0.0)
+        preco_col1, preco_col2 = st.columns(2)
+        with preco_col1:
+            preco_min_catalogo = st.number_input(
+                "Preço mínimo (R$)", min_value=0.0,
+                max_value=max(maior_preco_cadastrado, 0.0),
+                value=min(menor_preco_cadastrado, maior_preco_cadastrado),
+                step=1.0, key="preco_min_catalogo_visual",
+            )
+        with preco_col2:
+            preco_max_catalogo = st.number_input(
+                "Preço máximo (R$)", min_value=0.0,
+                max_value=max(maior_preco_cadastrado, 0.0),
+                value=maior_preco_cadastrado,
+                step=1.0, key="preco_max_catalogo_visual",
+            )
+        if preco_min_catalogo > preco_max_catalogo:
+            st.warning("O preço mínimo está acima do preço máximo. Ajuste a faixa para aplicar o filtro.")
 
         produtos_catalogo = [
             produto for produto in todos_produtos_catalogo
@@ -1370,6 +1618,14 @@ elif pagina == "Catálogo Visual":
         elif disponibilidade_catalogo == "Sem estoque":
             produtos_catalogo = [p for p in produtos_catalogo if int(p["quantidade"]) <= 0]
 
+        if preco_min_catalogo <= preco_max_catalogo:
+            produtos_catalogo = [
+                p for p in produtos_catalogo
+                if preco_min_catalogo <= float(p.get("preco") or 0) <= preco_max_catalogo
+            ]
+        else:
+            produtos_catalogo = []
+
         if ordem_catalogo == "Nome (A–Z)":
             produtos_catalogo.sort(key=lambda p: (p["nome"] or "").casefold())
         elif ordem_catalogo == "Nome (Z–A)":
@@ -1378,21 +1634,10 @@ elif pagina == "Catálogo Visual":
             produtos_catalogo.sort(key=lambda p: float(p["preco"] or 0))
         elif ordem_catalogo == "Maior preço":
             produtos_catalogo.sort(key=lambda p: float(p["preco"] or 0), reverse=True)
+        elif ordem_catalogo == "Menor quantidade":
+            produtos_catalogo.sort(key=lambda p: int(p["quantidade"] or 0))
         elif ordem_catalogo == "Maior quantidade":
             produtos_catalogo.sort(key=lambda p: int(p["quantidade"] or 0), reverse=True)
-
-        # Quando a pesquisa/filtros mudam, volta para a primeira página para evitar
-        # uma página antiga inválida ou uma lista aparentemente vazia.
-        assinatura_filtros_catalogo = (
-            busca_catalogo,
-            tuple(sorted(categorias_selecionadas_catalogo)),
-            disponibilidade_catalogo,
-            ordem_catalogo,
-        )
-        assinatura_anterior = st.session_state.get("assinatura_filtros_catalogo")
-        if assinatura_anterior != assinatura_filtros_catalogo:
-            st.session_state["pagina_catalogo_visual"] = 1
-            st.session_state["assinatura_filtros_catalogo"] = assinatura_filtros_catalogo
 
         st.divider()
         if produtos_catalogo:
@@ -1400,13 +1645,21 @@ elif pagina == "Catálogo Visual":
             controle_col1, controle_col2 = st.columns([1, 2])
             with controle_col1:
                 itens_por_pagina = st.selectbox(
-                    "Produtos por página", [6, 12, 18, 24, 30], index=4,
+                    "Produtos por página", [12, 24, 30, 48, 60], index=2,
                     key="itens_por_pagina_catalogo",
-                    help="Comece com 12 produtos para reduzir o trabalho de renderização, especialmente no celular.",
                 )
             total_paginas_catalogo = max(1, (total_filtrados_catalogo + itens_por_pagina - 1) // itens_por_pagina)
-            pagina_salva = st.session_state.get("pagina_catalogo_visual", 1)
-            if not isinstance(pagina_salva, int) or pagina_salva < 1 or pagina_salva > total_paginas_catalogo:
+            # Quando os filtros mudam, volta à primeira página para evitar página vazia.
+            assinatura_filtros_catalogo = (
+                busca_catalogo, tuple(categorias_selecionadas_catalogo),
+                disponibilidade_catalogo, ordem_catalogo,
+                float(preco_min_catalogo), float(preco_max_catalogo), itens_por_pagina,
+            )
+            if st.session_state.get("assinatura_filtros_catalogo") != assinatura_filtros_catalogo:
+                st.session_state["assinatura_filtros_catalogo"] = assinatura_filtros_catalogo
+                st.session_state["pagina_catalogo_visual"] = 1
+            pagina_salva_catalogo = st.session_state.get("pagina_catalogo_visual", 1)
+            if not isinstance(pagina_salva_catalogo, int) or pagina_salva_catalogo > total_paginas_catalogo:
                 st.session_state["pagina_catalogo_visual"] = 1
             with controle_col2:
                 pagina_catalogo = st.selectbox(
@@ -1420,135 +1673,101 @@ elif pagina == "Catálogo Visual":
             for produto in produtos_exibidos_catalogo:
                 produto["foto"] = fotos_catalogo.get(int(produto["id"]))
             st.caption(f"Exibindo {len(produtos_exibidos_catalogo)} de {total_filtrados_catalogo} produto(s) · Página {pagina_catalogo} de {total_paginas_catalogo}")
-            # Duas colunas reais no Streamlit: evita que o CSS responsivo empilhe
-            # os produtos em uma única coluna no celular.
-                # Grade HTML responsiva: não depende das colunas do Streamlit,
-            # que podem empilhar os produtos em telas estreitas.
-            cards_catalogo = []
-            for produto in produtos_exibidos_catalogo:
-                nome_produto = html.escape(str(produto.get("nome") or "Produto"))
-                categoria_produto = html.escape(str(produto.get("categoria") or "Sem categoria"))
-                qtd = int(produto.get("quantidade") or 0)
-                if produto.get("foto"):
-                    foto_bytes = bytes(produto["foto"])
-                    foto_b64 = base64.b64encode(foto_bytes).decode("ascii")
-                    if foto_bytes.startswith(b"\x89PNG"):
-                        mime_foto = "image/png"
-                    elif foto_bytes.startswith(b"RIFF") and foto_bytes[8:12] == b"WEBP":
-                        mime_foto = "image/webp"
-                    elif foto_bytes.startswith(b"GIF8"):
-                        mime_foto = "image/gif"
-                    else:
-                        mime_foto = "image/jpeg"
-                    imagem_html = (
-                        f'<img src="data:{mime_foto};base64,{foto_b64}" '
-                        f'alt="{nome_produto}" class="mabel-produto-foto">'
-                    )
-                else:
-                    imagem_html = '<div class="mabel-produto-sem-foto">📦</div>'
+            # Cartões com o mesmo padrão visual do catálogo online: foto quadrada,
+            # categoria em lilás, quantidade, preço promocional e descrição expansível.
+            with st.container(key="catalogo-visual-grid"):
+                for inicio in range(0, len(produtos_exibidos_catalogo), 4):
+                    colunas_catalogo = st.columns(4, gap="medium")
+                    grupo_produtos = produtos_exibidos_catalogo[inicio:inicio + 4]
+                    for coluna, produto in zip(colunas_catalogo, grupo_produtos):
+                        with coluna:
+                            with st.container(border=True):
+                                if produto.get("foto"):
+                                    try:
+                                        dados_foto = bytes(produto["foto"]) if isinstance(produto["foto"], memoryview) else produto["foto"]
+                                        with Image.open(BytesIO(dados_foto)) as imagem_original:
+                                            # Corrige a orientação de fotos tiradas pelo celular.
+                                            imagem_orientada = ImageOps.exif_transpose(imagem_original)
 
-                if qtd > 0:
-                    status_html = f'<div class="mabel-produto-status mabel-em-estoque">● Em estoque · {qtd} unidade(s)</div>'
-                else:
-                    status_html = '<div class="mabel-produto-status mabel-fora-estoque">● Fora de estoque</div>'
+                                            # Composita imagens transparentes sobre branco antes de converter para RGB.
+                                            # Assim, PNG/WebP transparentes não ficam com fundo preto.
+                                            tem_transparencia = (
+                                                imagem_orientada.mode in ("RGBA", "LA")
+                                                or "transparency" in imagem_orientada.info
+                                            )
+                                            if tem_transparencia:
+                                                imagem_rgba = imagem_orientada.convert("RGBA")
+                                                fundo_branco = Image.new("RGBA", imagem_rgba.size, (255, 255, 255, 255))
+                                                imagem_sem_transparencia = Image.alpha_composite(
+                                                    fundo_branco, imagem_rgba
+                                                ).convert("RGB")
+                                            else:
+                                                imagem_sem_transparencia = imagem_orientada.convert("RGB")
 
-                cards_catalogo.append(
-                    '<article class="mabel-produto-card">'
-                    f'<div class="mabel-produto-imagem">{imagem_html}</div>'
-                    f'<div class="mabel-produto-nome">{nome_produto}</div>'
-                    f'<div class="mabel-produto-categoria">Categoria: {categoria_produto}</div>'
-                    f'{status_html}'
-                    f'<div class="mabel-produto-preco">{html.escape(str(moeda(produto["preco"])))}</div>'
-                    '</article>'
-                )
+                                            # A imagem é reduzida proporcionalmente e centralizada em um quadrado.
+                                            # Não estica nem corta o produto; apenas completa o espaço com branco.
+                                            imagem_padronizada = ImageOps.pad(
+                                                imagem_sem_transparencia,
+                                                (640, 640),
+                                                method=Image.Resampling.LANCZOS,
+                                                color=(255, 255, 255),
+                                                centering=(0.5, 0.5),
+                                            )
+                                        st.image(imagem_padronizada, use_container_width=True)
+                                    except Exception:
+                                        st.markdown(
+                                            "<div class='catalog-visual-placeholder'>📦</div>",
+                                            unsafe_allow_html=True,
+                                        )
+                                else:
+                                    st.markdown(
+                                        "<div class='catalog-visual-placeholder'>🛍️</div>",
+                                        unsafe_allow_html=True,
+                                    )
 
-            st.markdown(
-                """
-                <style>
-                .mabel-produtos-grade {
-                    display: grid !important;
-                    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-                    gap: 10px !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    box-sizing: border-box !important;
-                    align-items: stretch;
-                }
-                .mabel-produto-card {
-                    min-width: 0 !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    box-sizing: border-box !important;
-                    overflow: hidden;
-                    border: 1px solid #e6e0e8;
-                    border-radius: 12px;
-                    padding: 8px;
-                    background: #ffffff;
-                }
-                .mabel-produto-imagem {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    width: 100%;
-                    height: 125px;
-                    margin-bottom: 8px;
-                    overflow: hidden;
-                }
-                .mabel-produto-foto {
-                    display: block;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    height: 125px !important;
-                    object-fit: contain !important;
-                }
-                .mabel-produto-sem-foto {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    width: 100%;
-                    height: 100%;
-                    background: #f1f3f5;
-                    border-radius: 8px;
-                    font-size: 30px;
-                }
-                .mabel-produto-nome {
-                    font-size: 0.88rem;
-                    line-height: 1.25;
-                    font-weight: 700;
-                    overflow-wrap: anywhere;
-                    margin: 4px 0 8px;
-                    color: #4d4053;
-                }
-                .mabel-produto-categoria {
-                    font-size: 0.72rem;
-                    line-height: 1.3;
-                    overflow-wrap: anywhere;
-                    color: #857a8b;
-                    margin-bottom: 8px;
-                }
-                .mabel-produto-status {
-                    font-size: 0.72rem;
-                    line-height: 1.3;
-                    font-weight: 600;
-                    overflow-wrap: anywhere;
-                    margin-bottom: 10px;
-                }
-                .mabel-em-estoque { color: #16794b; }
-                .mabel-fora-estoque { color: #b42318; }
-                .mabel-produto-preco {
-                    font-size: 0.95rem;
-                    line-height: 1.25;
-                    font-weight: 800;
-                    overflow-wrap: anywhere;
-                    color: #5a4a60;
-                }
-                </style>
-                <div class="mabel-produtos-grade">
-                """
-                + "".join(cards_catalogo)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
+                                nome_seguro = html.escape(str(produto.get("nome") or "Produto"))
+                                categoria_segura = html.escape(
+                                    " · ".join(separar_categorias(produto.get("categoria"))) or "Sem categoria"
+                                )
+                                st.markdown(
+                                    f"<div class='catalog-visual-name'>{nome_seguro}</div>",
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown(
+                                    f"<div class='catalog-visual-category'>{categoria_segura}</div>",
+                                    unsafe_allow_html=True,
+                                )
+                                qtd = max(0, int(produto.get("quantidade") or 0))
+                                st.markdown(
+                                    f"<div class='catalog-visual-quantity'>Quantidade disponível: {qtd}</div>",
+                                    unsafe_allow_html=True,
+                                )
+
+                                preco_normal = float(produto.get("preco") or 0)
+                                promo = float(produto.get("preco_promocional") or 0)
+                                if 0 < promo < preco_normal:
+                                    st.markdown(
+                                        f"<div class='catalog-visual-old-price'>De {moeda(preco_normal)}</div>"
+                                        f"<div class='catalog-visual-price'>Por {moeda(promo)} "
+                                        "<span style='font-size:.72rem;background:#EDE4F3;padding:.18rem .4rem;border-radius:20px'>OFERTA</span></div>",
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    st.markdown(
+                                        f"<div class='catalog-visual-price'>{moeda(preco_normal)}</div>",
+                                        unsafe_allow_html=True,
+                                    )
+
+                                descricao = str(produto.get("descricao") or "").strip()
+                                if descricao:
+                                    descricao_segura = html.escape(descricao)
+                                    st.markdown(
+                                        "<details class='description-toggle'>"
+                                        "<summary>Ver descrição</summary>"
+                                        f"<div class='description-content'>{descricao_segura}</div>"
+                                        "</details>",
+                                        unsafe_allow_html=True,
+                                    )
 
         else:
             st.info("Nenhum produto corresponde aos filtros selecionados. Experimente alterar a pesquisa ou os filtros.")
@@ -1557,7 +1776,307 @@ elif pagina == "Catálogo Visual":
 
 
 # ------------------------------------------
-# 9. CONTROLE DE DÍVIDAS
+# 9. PERSONALIZAR CATÁLOGO PÚBLICO
+# ------------------------------------------
+elif pagina == "Personalizar catálogo":
+    st.subheader("Personalizar catálogo público")
+    st.caption(
+        "Abra Destaques ou Promoções do catálogo para editar cada seção. "
+        "As configurações ficam recolhidas até você clicar nelas. "
+        "Os produtos da categoria Kits aparecem automaticamente na seção Kits."
+    )
+
+    produtos_personalizar = listar_produtos(incluir_fotos=False)
+    if not produtos_personalizar:
+        st.info("Cadastre produtos antes de personalizar o catálogo.")
+    else:
+        produtos_com_estoque = [
+            p for p in produtos_personalizar
+            if int(p["quantidade"] or 0) > 0
+        ]
+
+        opcoes_destaques = {
+            f"{p['nome']} · {p['categoria']} · estoque: {p['quantidade']}": int(p["id"])
+            for p in produtos_com_estoque
+        }
+
+        with conectar() as conexao:
+            destaques_atuais = conexao.execute(
+                "SELECT produto_id FROM public.catalogo_destaques ORDER BY ordem, produto_id"
+            ).fetchall()
+            promocoes_atuais = conexao.execute(
+                "SELECT produto_id FROM public.catalogo_promocoes ORDER BY ordem, produto_id"
+            ).fetchall()
+
+        ids_destaques = [int(linha[0]) for linha in destaques_atuais]
+        labels_destaques = [
+            label for label, produto_id in opcoes_destaques.items()
+            if produto_id in ids_destaques
+        ]
+
+        # As promoções podem ser editadas aqui sem ir para Cadastrar Produtos.
+        # Inclui produtos em estoque e também promoções antigas sem estoque,
+        # para que elas ainda possam ser removidas no painel.
+        produtos_para_criar_promo = {
+            f"{p['nome']} · preço normal: {moeda(p['preco'])} · estoque: {p['quantidade']}": p
+            for p in produtos_personalizar
+            if (
+                int(p["quantidade"] or 0) > 0
+                or 0 < float(p.get("preco_promocional") or 0) < float(p.get("preco") or 0)
+            )
+        }
+
+        produtos_com_promocao = [
+            p for p in produtos_com_estoque
+            if 0 < float(p.get("preco_promocional") or 0) < float(p.get("preco") or 0)
+        ]
+        opcoes_promocoes = {
+            f"{p['nome']} · {moeda(p['preco'])} → {moeda(p['preco_promocional'])} · estoque: {p['quantidade']}": int(p["id"])
+            for p in produtos_com_promocao
+        }
+        ids_promocoes = [int(linha[0]) for linha in promocoes_atuais]
+        labels_promocoes = [
+            label for label, produto_id in opcoes_promocoes.items()
+            if produto_id in ids_promocoes
+        ]
+
+        # Seção recolhida: só mostra os controles quando clicada.
+        with st.expander("✨ Destaques", expanded=False):
+            st.write(
+                "Selecione os produtos que deseja destacar. "
+                "A ordem da seleção será usada no catálogo público."
+            )
+            selecionados = st.multiselect(
+                "Produtos em destaque",
+                options=list(opcoes_destaques.keys()),
+                default=labels_destaques,
+                help="Somente produtos com estoque disponível aparecem nesta lista.",
+                key="selecionar_destaques_publicos",
+            )
+            if st.button(
+                "Salvar destaques",
+                type="primary",
+                use_container_width=True,
+                key="salvar_destaques_publicos",
+            ):
+                ids_novos = [opcoes_destaques[label] for label in selecionados]
+                try:
+                    with conectar() as conexao:
+                        conexao.execute("DELETE FROM public.catalogo_destaques")
+                        for ordem, produto_id in enumerate(ids_novos, start=1):
+                            conexao.execute(
+                                "INSERT INTO public.catalogo_destaques (produto_id, ordem) VALUES (?, ?)",
+                                (produto_id, ordem),
+                            )
+                    st.success("Destaques salvos!")
+                    st.rerun()
+                except Exception as erro:
+                    st.error(f"Não foi possível salvar os destaques: {erro}")
+
+        # Seção recolhida com criação, remoção e seleção das promoções do carrossel.
+        with st.expander("🔥 Promoções do catálogo", expanded=False):
+            st.write(
+                "Crie ou altere o preço promocional e escolha quais promoções "
+                "serão mostradas no carrossel público."
+            )
+
+            if not produtos_para_criar_promo:
+                st.info("Não há produtos com estoque disponível para configurar promoções.")
+            else:
+                produto_promo_label = st.selectbox(
+                    "Produto para criar, editar ou excluir promoção",
+                    options=list(produtos_para_criar_promo.keys()),
+                    key="produto_para_criar_promocao",
+                )
+                produto_promo = produtos_para_criar_promo[produto_promo_label]
+                produto_promo_id = int(produto_promo["id"])
+                preco_normal_promo = float(produto_promo.get("preco") or 0)
+                preco_promo_atual = float(produto_promo.get("preco_promocional") or 0)
+                tem_promocao_ativa = (
+                    0 < preco_promo_atual < preco_normal_promo
+                )
+
+                with st.form(f"form_criar_promocao_{produto_promo_id}"):
+                    st.caption(f"Preço normal: {moeda(preco_normal_promo)}")
+                    novo_preco_promo = st.number_input(
+                        "Preço promocional (R$)",
+                        min_value=0.0,
+                        max_value=max(preco_normal_promo, 0.0),
+                        value=(
+                            min(preco_promo_atual, preco_normal_promo)
+                            if tem_promocao_ativa else 0.0
+                        ),
+                        step=0.5,
+                        format="%.2f",
+                        help=(
+                            "Informe um valor maior que R$ 0,00 e menor que o preço normal. "
+                            "Use R$ 0,00 para retirar a promoção."
+                        ),
+                        key=(
+                            f"preco_promocional_{produto_promo_id}_"
+                            f"{int(round(preco_promo_atual * 100))}"
+                        ),
+                    )
+                    salvar_preco_promo = st.form_submit_button(
+                        "Salvar preço promocional",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if salvar_preco_promo:
+                    try:
+                        if novo_preco_promo != 0 and not (
+                            0 < novo_preco_promo < preco_normal_promo
+                        ):
+                            st.error(
+                                "O preço promocional precisa ser maior que R$ 0,00 "
+                                "e menor que o preço normal."
+                            )
+                        else:
+                            valor_salvar = (
+                                None if float(novo_preco_promo) == 0
+                                else float(novo_preco_promo)
+                            )
+                            with conectar() as conexao:
+                                conexao.execute(
+                                    "UPDATE public.produtos SET preco_promocional = ? WHERE id = ?",
+                                    (valor_salvar, produto_promo_id),
+                                )
+                                # Ao retirar o desconto, removemos também do carrossel público.
+                                if valor_salvar is None:
+                                    conexao.execute(
+                                        "DELETE FROM public.catalogo_promocoes WHERE produto_id = ?",
+                                        (produto_promo_id,),
+                                    )
+                            if valor_salvar is None:
+                                st.success("Promoção removida e produto retirado do carrossel.")
+                            else:
+                                st.success("Preço promocional salvo!")
+                            st.rerun()
+                    except Exception as erro:
+                        st.error(f"Não foi possível salvar o preço promocional: {erro}")
+
+                if tem_promocao_ativa:
+                    st.warning(
+                        f"Promoção ativa: de {moeda(preco_normal_promo)} "
+                        f"por {moeda(preco_promo_atual)}."
+                    )
+                    if st.button(
+                        "🗑️ Excluir promoção deste produto",
+                        type="secondary",
+                        use_container_width=True,
+                        key=f"excluir_promocao_{produto_promo_id}",
+                    ):
+                        try:
+                            with conectar() as conexao:
+                                conexao.execute(
+                                    "UPDATE public.produtos SET preco_promocional = NULL WHERE id = ?",
+                                    (produto_promo_id,),
+                                )
+                                conexao.execute(
+                                    "DELETE FROM public.catalogo_promocoes WHERE produto_id = ?",
+                                    (produto_promo_id,),
+                                )
+                            st.success("Promoção excluída com sucesso.")
+                            st.rerun()
+                        except Exception as erro:
+                            st.error(f"Não foi possível excluir a promoção: {erro}")
+                else:
+                    st.caption("Este produto não tem uma promoção ativa no momento.")
+
+            st.divider()
+            st.markdown("#### Produtos que aparecerão no carrossel")
+            # Atualiza as escolhas usando preços promocionais válidos.
+            produtos_atualizados = listar_produtos(incluir_fotos=False)
+            produtos_com_estoque_atualizados = [
+                p for p in produtos_atualizados
+                if int(p["quantidade"] or 0) > 0
+            ]
+            produtos_com_promocao_atualizados = [
+                p for p in produtos_com_estoque_atualizados
+                if 0 < float(p.get("preco_promocional") or 0) < float(p.get("preco") or 0)
+            ]
+            opcoes_promocoes_atualizadas = {
+                f"{p['nome']} · {moeda(p['preco'])} → {moeda(p['preco_promocional'])} · estoque: {p['quantidade']}": int(p["id"])
+                for p in produtos_com_promocao_atualizados
+            }
+            with conectar() as conexao:
+                promocoes_atuais_atualizadas = conexao.execute(
+                    "SELECT produto_id FROM public.catalogo_promocoes ORDER BY ordem, produto_id"
+                ).fetchall()
+            ids_promocoes_atualizados = [int(linha[0]) for linha in promocoes_atuais_atualizadas]
+            labels_promocoes_atualizados = [
+                label for label, produto_id in opcoes_promocoes_atualizadas.items()
+                if produto_id in ids_promocoes_atualizados
+            ]
+
+            if not opcoes_promocoes_atualizadas:
+                st.info(
+                    "Ainda não há preços promocionais válidos. "
+                    "Selecione um produto acima e salve um preço menor que o normal."
+                )
+            else:
+                selecionadas_promocoes = st.multiselect(
+                    "Produtos em promoção",
+                    options=list(opcoes_promocoes_atualizadas.keys()),
+                    default=labels_promocoes_atualizados,
+                    help=(
+                        "Escolha quais produtos aparecerão no carrossel Promoções "
+                        "do catálogo público."
+                    ),
+                    key="selecionar_promocoes_publicas",
+                )
+                if st.button(
+                    "Salvar produtos no carrossel",
+                    type="primary",
+                    use_container_width=True,
+                    key="salvar_produtos_carrossel_promocoes",
+                ):
+                    ids_novos = [
+                        opcoes_promocoes_atualizadas[label]
+                        for label in selecionadas_promocoes
+                    ]
+                    try:
+                        with conectar() as conexao:
+                            conexao.execute("DELETE FROM public.catalogo_promocoes")
+                            for ordem, produto_id in enumerate(ids_novos, start=1):
+                                conexao.execute(
+                                    "INSERT INTO public.catalogo_promocoes (produto_id, ordem) VALUES (?, ?)",
+                                    (produto_id, ordem),
+                                )
+                        st.success("Produtos do carrossel de promoções salvos!")
+                        st.rerun()
+                    except Exception as erro:
+                        st.error(f"Não foi possível salvar as promoções: {erro}")
+
+        # A seção Kits também fica recolhida para manter a tela organizada.
+        with st.expander("🎁 Seção de kits", expanded=False):
+            st.write(
+                "Cadastre kits em Cadastrar Produtos usando a categoria Kits. "
+                "Cada kit tem sua própria foto, preço e quantidade."
+            )
+            kits = [
+                p for p in produtos_personalizar
+                if str(p.get("categoria") or "").strip().casefold() == "kits"
+            ]
+            if kits:
+                st.success(
+                    f"{len(kits)} kit(s) encontrado(s). Eles aparecerão na seção Kits quando houver estoque."
+                )
+                st.dataframe(
+                    [
+                        {"Kit": p["nome"], "Preço": moeda(p["preco"]), "Estoque": p["quantidade"]}
+                        for p in kits
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("Ainda não há produtos na categoria Kits.")
+
+
+# ------------------------------------------
+# 10. CONTROLE DE DÍVIDAS
 # ------------------------------------------
 elif pagina == "Controle de Dívidas":
     st.subheader("Controle de dívidas")

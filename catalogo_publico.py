@@ -44,17 +44,47 @@ st.markdown(f"""
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
 .block-container {{ max-width: 1240px; padding-top: 1.15rem; padding-bottom: 2.5rem; }}
 
-/* Cabeçalho */
-.mabel-header {{
-    text-align:center; padding:2rem 1.25rem 1.8rem;
-    border:1px solid var(--mabel-border); border-radius:26px;
-    background:linear-gradient(135deg,#FFFFFF 0%,#F5EEF9 100%);
-    box-shadow:0 12px 32px rgba(89,54,111,.08);
+/* Tipografia leve e cabeçalho compacto da Vitrine */
+.stApp, .stApp input, .stApp textarea, .stApp button, .stApp select {{
+    font-family: "Segoe UI", "Aptos", "Helvetica Neue", sans-serif !important;
 }}
-.mabel-logo-img {{ width:min(100%,280px); max-height:270px; object-fit:contain; display:block; margin:.1rem auto .5rem; }}
-.mabel-subtitle {{ color:{COR_PRINCIPAL}; margin-top:.45rem; font-size:1.08rem; }}
-.mabel-promo {{ display:inline-block; background:{COR_ESCURO}; color:white; border-radius:99px; padding:.38rem .9rem; font-size:.76rem; font-weight:750; letter-spacing:.07em; margin-bottom:.75rem; }}
-.section-title {{ color:{COR_TEXTO}; font-size:1.55rem; font-weight:780; margin:1.8rem 0 .85rem; letter-spacing:-.02em; }}
+.mabel-header {{
+    padding:.8rem 1rem .75rem; border:1px solid var(--mabel-border); border-radius:22px;
+    background:linear-gradient(135deg,#FFFFFF 0%,#F8F3FB 100%);
+    box-shadow:0 7px 22px rgba(89,54,111,.055);
+}}
+.mabel-header-main {{
+    display:grid; grid-template-columns:76px minmax(0,1fr) 76px;
+    align-items:center; gap:.35rem; min-height:72px;
+}}
+.mabel-logo-wrap {{ grid-column:1; display:flex; align-items:center; justify-content:flex-start; min-width:0; }}
+.mabel-logo-img {{ width:68px; height:68px; max-width:100%; object-fit:contain; display:block; margin:0; }}
+.mabel-header-title {{ grid-column:2; text-align:center; min-width:0; }}
+.mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:"Segoe UI", "Aptos", "Helvetica Neue", sans-serif; font-size:clamp(1.65rem,3.2vw,2.15rem); font-weight:550; letter-spacing:.015em; line-height:1.15; }}
+.mabel-header-balance {{ grid-column:3; min-width:0; }}
+.mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.025em; line-height:1.5; }}
+.section-title {{ color:{COR_TEXTO}; font-size:1.45rem; font-weight:650; margin:1.65rem 0 .8rem; letter-spacing:-.015em; }}
+
+/* Carrinho discreto: abre o conteúdo apenas quando o botão é acionado. */
+.st-key-cart-toolbar {{ margin:.45rem 0 1rem; width:100%; }}
+.st-key-cart-toolbar > div[data-testid="stVerticalBlock"] {{ display:flex; justify-content:flex-end; align-items:center; }}
+.st-key-cart-toolbar div[data-testid="stPopover"] {{ width:auto !important; margin-left:auto; }}
+.st-key-cart-toolbar div[data-testid="stPopover"] > button {{
+    width:auto !important; min-width:0 !important; border-radius:999px !important;
+    padding:.42rem .85rem !important; background:#FFFFFF !important;
+    color:{COR_ESCURO} !important; border:1px solid #DCCBE7 !important;
+    font-size:.84rem !important; font-weight:600 !important; box-shadow:0 2px 8px rgba(89,54,111,.045) !important;
+}}
+.st-key-cart-toolbar div[data-testid="stPopover"] > button:hover {{ background:#F5EEF9 !important; }}
+div[data-testid="stPopoverBody"] {{ max-width:min(410px, calc(100vw - 1.25rem)); }}
+div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button,
+div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-height:34px !important; padding:.35rem .55rem !important; font-size:.82rem !important; }}
+.cart-popover-heading {{ color:{COR_ESCURO}; font-weight:600; font-size:1.04rem; margin:.1rem 0 .5rem; }}
+.cart-popover-intro {{ color:#786B82; font-size:.82rem; font-weight:350; line-height:1.45; margin-bottom:.65rem; }}
+.cart-item-mini {{ border:1px solid #EEE5F3; border-radius:12px; background:#FFFFFF; padding:.6rem .7rem; margin:.4rem 0 .45rem; }}
+.cart-item-mini-name {{ color:{COR_TEXTO}; font-weight:600; font-size:.88rem; line-height:1.35; overflow-wrap:anywhere; }}
+.cart-item-mini-detail {{ color:#776C7E; font-size:.78rem; line-height:1.4; margin-top:.2rem; overflow-wrap:anywhere; }}
+.cart-popover-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:.7rem .8rem; border-radius:12px; color:{COR_ESCURO}; font-size:.92rem; line-height:1.45; }}
 
 /* Grades responsivas para Destaques, Promoções e Kits (sem carrossel) */
 .product-section-grid {{
@@ -168,9 +198,14 @@ div[data-testid="stButton"] > button:disabled {{
         padding-top:.7rem; padding-bottom:1.5rem;
         box-sizing:border-box !important;
     }}
-    .mabel-header {{ padding:1.35rem .75rem; border-radius:18px; }}
-    .mabel-logo-img {{ width:min(80%,210px); }}
-    .section-title {{ font-size:1.25rem; margin:1.35rem 0 .7rem; }}
+    .mabel-header {{ padding:.65rem .65rem .7rem; border-radius:17px; }}
+    .mabel-header-main {{ grid-template-columns:54px minmax(0,1fr) 54px; min-height:54px; gap:.2rem; }}
+    .mabel-logo-img {{ width:50px; height:50px; }}
+    .mabel-header-title h1 {{ font-size:1.55rem; }}
+    .mabel-subtitle {{ font-size:.78rem; line-height:1.4; margin-top:.3rem; letter-spacing:.01em; }}
+    .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; }}
+    .st-key-cart-toolbar div[data-testid="stPopover"] > button {{ padding:.36rem .68rem !important; font-size:.78rem !important; }}
+    .section-title {{ font-size:1.22rem; margin:1.25rem 0 .7rem; }}
 
     /* O catálogo principal vira uma grade real de 2 colunas no celular.
        Não usa rolagem horizontal nem transforma os produtos em carrossel. */
@@ -580,24 +615,25 @@ def renderizar_cartao_interativo(produto, indice):
 
 
 def mostrar_carrinho(produtos):
+    """Mostra um botão compacto que abre o carrinho em um popover."""
     produtos_por_id = {str(p[0]): p for p in produtos}
     carrinho = st.session_state.setdefault("mabel_store_carrinho", {})
 
-    # Retira do carrinho itens que foram excluídos do estoque pelo administrador.
+    # Remove itens excluídos do estoque pelo administrador.
     for pid_chave in list(carrinho.keys()):
         if pid_chave not in produtos_por_id:
             carrinho.pop(pid_chave, None)
 
-    quantidade_itens = sum(int(q) for q in carrinho.values())
-    st.markdown(
-        f'<h2 class="section-title">🛒 Meu carrinho <span '
-        f'style="font-size:1rem;color:{COR_PRINCIPAL}">({quantidade_itens} item(ns))</span></h2>',
-        unsafe_allow_html=True,
-    )
+    quantidade_itens = sum(max(0, int(q)) for q in carrinho.values())
+    with st.popover(f"🛒 Carrinho · {quantidade_itens}", use_container_width=False):
+        st.markdown('<div class="cart-popover-heading">Seu pedido</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="cart-popover-intro">Confira os produtos e envie tudo em uma única mensagem pelo WhatsApp. ✨</div>',
+            unsafe_allow_html=True,
+        )
 
-    with st.container(border=True):
         if not carrinho:
-            st.info("Seu carrinho está vazio. Adicione os produtos que deseja pedir.")
+            st.caption("Seu carrinho está vazio. Adicione produtos para montar seu pedido.")
             return
 
         total = 0.0
@@ -609,49 +645,52 @@ def mostrar_carrinho(produtos):
             if not produto:
                 continue
 
-            pid, nome, categoria, preco, quantidade, foto, preco_promocional, descricao = produto
-            qtd = int(carrinho.get(pid_chave, 1))
+            _pid, nome, _categoria, _preco, quantidade, _foto, _preco_promocional, _descricao = produto
+            qtd = max(1, int(carrinho.get(pid_chave, 1)))
             estoque = max(0, int(quantidade or 0))
             preco_atual = preco_efetivo(produto)
             subtotal = preco_atual * qtd
             total += subtotal
 
-            linha = st.columns([4, 1, 1, 1, 1])
-            with linha[0]:
-                st.markdown(f"**{html.escape(str(nome or 'Produto'))}**", unsafe_allow_html=True)
-                st.caption(f"{moeda(preco_atual)} cada · Subtotal: {moeda(subtotal)}")
-                if estoque <= 0:
-                    st.caption("Quantidade disponível: 0")
-                    tem_indisponivel = True
-                elif qtd > estoque:
-                    st.warning(f"Estoque atual: {estoque}. Reduza a quantidade.")
-                    tem_quantidade_acima_estoque = True
-            with linha[1]:
-                st.markdown(f"**Qtd. {qtd}**")
-            with linha[2]:
-                if st.button("−", key=f"cart_menos_{pid_chave}", disabled=qtd <= 1, help="Diminuir quantidade"):
+            st.markdown(
+                f'<div class="cart-item-mini">'
+                f'<div class="cart-item-mini-name">{html.escape(str(nome or "Produto"))}</div>'
+                f'<div class="cart-item-mini-detail">{qtd} × {moeda(preco_atual)} · Subtotal: {moeda(subtotal)}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if estoque <= 0:
+                st.caption("Este produto está sem unidades disponíveis.")
+                tem_indisponivel = True
+            elif qtd > estoque:
+                st.warning(f"Estoque atual de {nome}: {estoque}. Reduza a quantidade.")
+                tem_quantidade_acima_estoque = True
+
+            controles = st.columns([1, 1, 1.45], gap="small")
+            with controles[0]:
+                if st.button("−", key=f"cart_menos_{pid_chave}", disabled=qtd <= 1, help="Diminuir quantidade", use_container_width=True):
                     carrinho[pid_chave] = qtd - 1
                     st.rerun()
-            with linha[3]:
-                if st.button("+", key=f"cart_mais_{pid_chave}", disabled=(estoque <= 0 or qtd >= estoque), help="Aumentar quantidade"):
+            with controles[1]:
+                if st.button("+", key=f"cart_mais_{pid_chave}", disabled=(estoque <= 0 or qtd >= estoque), help="Aumentar quantidade", use_container_width=True):
                     carrinho[pid_chave] = qtd + 1
                     st.rerun()
-            with linha[4]:
-                if st.button("🗑️", key=f"cart_remover_{pid_chave}", help="Remover do carrinho"):
+            with controles[2]:
+                if st.button("Remover", key=f"cart_remover_{pid_chave}", help="Remover este item", use_container_width=True):
                     carrinho.pop(pid_chave, None)
                     st.rerun()
+            st.divider()
 
         st.markdown(
-            f'<div class="cart-total"><strong>Total estimado do pedido: '
-            f'{moeda(total)}</strong></div>',
+            f'<div class="cart-popover-total"><strong>Total estimado: {moeda(total)}</strong></div>',
             unsafe_allow_html=True,
         )
-        st.caption("O pedido será enviado como mensagem pelo WhatsApp; não há pagamento dentro do site.")
+        st.caption("O pagamento não é processado no site; o pedido será enviado para confirmação pelo WhatsApp.")
 
         if tem_indisponivel or tem_quantidade_acima_estoque:
             st.warning(
-                "Revise o carrinho: há produto sem unidades disponíveis ou quantidade maior que o saldo atual. "
-                "Remova o item indisponível ou reduza a quantidade para enviar o pedido."
+                "Revise as quantidades: há produto sem estoque ou uma quantidade maior que a disponível. "
+                "Ajuste o carrinho antes de enviar."
             )
         else:
             linhas_pedido = [
@@ -670,13 +709,13 @@ def mostrar_carrinho(produtos):
                 )
             linhas_pedido += ["", f"Total estimado: {moeda(total)}", "", "Aguardo confirmação de disponibilidade e entrega. Obrigado(a)!"]
             st.link_button(
-                "📲 Enviar pedido completo pelo WhatsApp",
+                "Enviar pedido pelo WhatsApp",
                 link_whatsapp("\n".join(linhas_pedido)),
                 type="primary",
                 use_container_width=True,
             )
 
-        if st.button("🧹 Esvaziar carrinho", key="esvaziar_carrinho", use_container_width=True):
+        if st.button("Esvaziar carrinho", key="esvaziar_carrinho", use_container_width=True):
             carrinho.clear()
             st.rerun()
 
@@ -699,16 +738,20 @@ except FileNotFoundError:
     st.stop()
 
 st.markdown(
-    f'<header class="mabel-header"><div class="mabel-promo">SUA VITRINE FAVORITA</div>'
-    f'<img class="mabel-logo-img" src="data:image/png;base64,{logo_base64}" alt="Logo Mabel Store">'
-    f'<p class="mabel-subtitle">Peças escolhidas com carinho para você 💜</p>'
-    f'<p style="color:#655B6B;margin-top:.7rem">Explore nossos produtos, aproveite as ofertas '
-    f'e peça diretamente pelo WhatsApp.</p></header>',
+    f'<header class="mabel-header">'
+    f'<div class="mabel-header-main">'
+    f'<div class="mabel-logo-wrap"><img class="mabel-logo-img" src="data:image/png;base64,{logo_base64}" alt="Logo Mabel Store"></div>'
+    f'<div class="mabel-header-title"><h1>Vitrine</h1></div>'
+    f'<div class="mabel-header-balance" aria-hidden="true"></div>'
+    f'</div>'
+    f'<p class="mabel-subtitle">Veja os produtos disponíveis na loja aqui <span aria-hidden="true">✨</span></p>'
+    f'</header>',
     unsafe_allow_html=True,
 )
 
-# Carrinho interativo: o conteúdo fica guardado na sessão do visitante.
-mostrar_carrinho(produtos)
+# Carrinho compacto, recolhido até o visitante clicar no botão.
+with st.container(key="cart-toolbar"):
+    mostrar_carrinho(produtos)
 
 # Produtos marcados no painel aparecem em grades, com a quantidade disponível.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]

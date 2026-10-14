@@ -73,20 +73,39 @@ st.markdown(f"""
 .mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:var(--mabel-font-display); font-size:clamp(2.25rem,4.1vw,3.05rem); font-weight:400; letter-spacing:0; line-height:1.08; }}
 .mabel-header-balance {{ grid-column:3; min-width:0; }}
 .mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.035em; line-height:1.55; }}
-.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.95rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:0; line-height:1.2; text-align:center; }}
+.section-title, h2.section-title, section .section-title {{
+    color:{COR_TEXTO}; font-family:var(--mabel-font-display) !important;
+    font-size:1.95rem; font-weight:400 !important; margin:1.65rem 0 .8rem;
+    letter-spacing:0; line-height:1.2; text-align:center;
+}}
 
 /* Carrinho discreto: abre o conteúdo apenas quando o botão é acionado. */
-.st-key-cart-toolbar {{ margin:.45rem 0 1rem; width:100%; }}
-.st-key-cart-toolbar > div[data-testid="stVerticalBlock"] {{ display:flex; justify-content:flex-end; align-items:center; }}
-.st-key-cart-toolbar div[data-testid="stPopover"] {{ width:auto !important; margin-left:auto; }}
+.st-key-cart-toolbar {{
+    margin:.45rem 0 1rem; width:100%; display:flex !important;
+    justify-content:flex-end !important; align-items:center !important;
+}}
+.st-key-cart-toolbar > div[data-testid="stVerticalBlock"] {{
+    display:flex !important; flex-direction:row !important; justify-content:flex-end !important;
+    align-items:center !important; width:100% !important; min-width:0;
+}}
+.st-key-cart-toolbar div[data-testid="stPopover"] {{
+    width:auto !important; min-width:0 !important; margin-left:auto !important;
+}}
 .st-key-cart-toolbar div[data-testid="stPopover"] > button {{
     width:auto !important; min-width:0 !important; border-radius:999px !important;
-    padding:.42rem .85rem !important; background:#FFFFFF !important;
+    padding:.46rem .9rem !important; background:#FFFFFF !important;
     color:{COR_ESCURO} !important; border:1px solid #DCCBE7 !important;
-    font-size:.84rem !important; font-weight:600 !important; box-shadow:0 2px 8px rgba(89,54,111,.045) !important;
+    font-size:.85rem !important; font-weight:600 !important; letter-spacing:.01em !important;
+    box-shadow:0 3px 12px rgba(89,54,111,.08) !important;
 }}
-.st-key-cart-toolbar div[data-testid="stPopover"] > button:hover {{ background:#F5EEF9 !important; }}
-div[data-testid="stPopoverBody"] {{ max-width:min(410px, calc(100vw - 1.25rem)); }}
+.st-key-cart-toolbar div[data-testid="stPopover"] > button:hover {{
+    background:#F5EEF9 !important; border-color:#CFB5E0 !important;
+}}
+div[data-testid="stPopoverBody"] {{
+    width:min(410px, calc(100vw - 1.25rem)) !important;
+    max-width:calc(100vw - 1.25rem) !important;
+    max-height:min(72vh, 620px); overflow-y:auto;
+}}
 div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button,
 div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-height:34px !important; padding:.35rem .55rem !important; font-size:.82rem !important; }}
 .cart-popover-heading {{ color:{COR_ESCURO}; font-family:var(--mabel-font-display); font-weight:400; font-size:1.5rem; letter-spacing:0; line-height:1.2; margin:.1rem 0 .5rem; }}
@@ -213,9 +232,19 @@ div[data-testid="stButton"] > button:disabled {{
     .mabel-logo-img {{ width:56px; height:56px; }}
     .mabel-header-title h1 {{ font-size:2.2rem; letter-spacing:0; line-height:1.05; }}
     .mabel-subtitle {{ font-size:.78rem; line-height:1.4; margin-top:.3rem; letter-spacing:.01em; }}
-    .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; }}
-    .st-key-cart-toolbar div[data-testid="stPopover"] > button {{ padding:.36rem .68rem !important; font-size:.78rem !important; }}
-    .section-title {{ font-size:1.72rem; margin:1.25rem 0 .7rem; text-align:center; }}
+    .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; width:100% !important; }}
+    .st-key-cart-toolbar > div[data-testid="stVerticalBlock"] {{
+        display:flex !important; flex-direction:row !important; justify-content:flex-end !important;
+        align-items:center !important; width:100% !important;
+    }}
+    .st-key-cart-toolbar div[data-testid="stPopover"] {{ margin-left:auto !important; }}
+    .st-key-cart-toolbar div[data-testid="stPopover"] > button {{
+        padding:.36rem .68rem !important; font-size:.78rem !important; max-width:100% !important;
+    }}
+    .section-title, h2.section-title, section .section-title {{
+        font-size:1.72rem; margin:1.25rem 0 .7rem; text-align:center;
+        font-family:var(--mabel-font-display) !important; font-weight:400 !important;
+    }}
 
     /* O catálogo principal vira uma grade real de 2 colunas no celular.
        Não usa rolagem horizontal nem transforma os produtos em carrossel. */
@@ -641,7 +670,7 @@ def mostrar_carrinho(produtos):
             carrinho.pop(pid_chave, None)
 
     quantidade_itens = sum(max(0, int(q)) for q in carrinho.values())
-    with st.popover(f"🛒 Carrinho · {quantidade_itens}", use_container_width=False):
+    with st.popover(f"🛍️ Meu carrinho · {quantidade_itens}", use_container_width=False):
         st.markdown('<div class="cart-popover-heading">Seu pedido</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="cart-popover-intro">Confira os produtos e envie tudo em uma única mensagem pelo WhatsApp. ✨</div>',

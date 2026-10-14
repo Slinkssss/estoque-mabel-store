@@ -35,6 +35,9 @@ COR_TEXTO = "#30283A"
 
 st.markdown(f"""
 <style>
+/* Fonte cursiva decorativa inspirada no estilo "Beauty" enviado como referência.
+   O restante do texto mantém fontes de sistema para preservar a leitura. */
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
 :root {{
     --mabel-purple: {COR_PRINCIPAL};
     --mabel-purple-dark: {COR_ESCURO};
@@ -44,10 +47,10 @@ st.markdown(f"""
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
 .block-container {{ max-width: 1240px; padding-top: 1.15rem; padding-bottom: 2.5rem; }}
 
-/* Tipografia delicada e profissional, usando fontes locais para manter o site leve. */
+/* Tipografia delicada: títulos cursivos e texto de produto limpo e legível. */
 :root {{
     --mabel-font-body: "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-    --mabel-font-display: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --mabel-font-display: "Great Vibes", "URW Chancery L", "Apple Chancery", "Brush Script MT", cursive;
 }}
 .stApp, .stApp input, .stApp textarea, .stApp button, .stApp select {{
     font-family: var(--mabel-font-body) !important;
@@ -67,10 +70,10 @@ st.markdown(f"""
 .mabel-logo-wrap {{ grid-column:1; display:flex; align-items:center; justify-content:flex-start; min-width:0; }}
 .mabel-logo-img {{ width:68px; height:68px; max-width:100%; object-fit:contain; display:block; margin:0; }}
 .mabel-header-title {{ grid-column:2; text-align:center; min-width:0; }}
-.mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:var(--mabel-font-display); font-size:clamp(1.7rem,3.2vw,2.2rem); font-weight:400; letter-spacing:.035em; line-height:1.15; }}
+.mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:var(--mabel-font-display); font-size:clamp(2.25rem,4.1vw,3.05rem); font-weight:400; letter-spacing:0; line-height:1.08; }}
 .mabel-header-balance {{ grid-column:3; min-width:0; }}
 .mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.035em; line-height:1.55; }}
-.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.48rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:.005em; }}
+.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.95rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:0; line-height:1.2; }}
 
 /* Carrinho discreto: abre o conteúdo apenas quando o botão é acionado. */
 .st-key-cart-toolbar {{ margin:.45rem 0 1rem; width:100%; }}
@@ -86,7 +89,7 @@ st.markdown(f"""
 div[data-testid="stPopoverBody"] {{ max-width:min(410px, calc(100vw - 1.25rem)); }}
 div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button,
 div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-height:34px !important; padding:.35rem .55rem !important; font-size:.82rem !important; }}
-.cart-popover-heading {{ color:{COR_ESCURO}; font-family:var(--mabel-font-display); font-weight:500; font-size:1.08rem; letter-spacing:.01em; margin:.1rem 0 .5rem; }}
+.cart-popover-heading {{ color:{COR_ESCURO}; font-family:var(--mabel-font-display); font-weight:400; font-size:1.5rem; letter-spacing:0; line-height:1.2; margin:.1rem 0 .5rem; }}
 .cart-popover-intro {{ color:#786B82; font-size:.82rem; font-weight:350; line-height:1.45; margin-bottom:.65rem; }}
 .cart-item-mini {{ border:1px solid #EEE5F3; border-radius:12px; background:#FFFFFF; padding:.6rem .7rem; margin:.4rem 0 .45rem; }}
 .cart-item-mini-name {{ color:{COR_TEXTO}; font-weight:550; font-size:.88rem; line-height:1.4; letter-spacing:.005em; overflow-wrap:anywhere; }}
@@ -208,11 +211,11 @@ div[data-testid="stButton"] > button:disabled {{
     .mabel-header {{ padding:.65rem .65rem .7rem; border-radius:17px; }}
     .mabel-header-main {{ grid-template-columns:54px minmax(0,1fr) 54px; min-height:54px; gap:.2rem; }}
     .mabel-logo-img {{ width:50px; height:50px; }}
-    .mabel-header-title h1 {{ font-size:1.58rem; letter-spacing:.025em; }}
+    .mabel-header-title h1 {{ font-size:2.2rem; letter-spacing:0; line-height:1.05; }}
     .mabel-subtitle {{ font-size:.78rem; line-height:1.4; margin-top:.3rem; letter-spacing:.01em; }}
     .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; }}
     .st-key-cart-toolbar div[data-testid="stPopover"] > button {{ padding:.36rem .68rem !important; font-size:.78rem !important; }}
-    .section-title {{ font-size:1.22rem; margin:1.25rem 0 .7rem; }}
+    .section-title {{ font-size:1.62rem; margin:1.25rem 0 .7rem; }}
 
     /* O catálogo principal vira uma grade real de 2 colunas no celular.
        Não usa rolagem horizontal nem transforma os produtos em carrossel. */

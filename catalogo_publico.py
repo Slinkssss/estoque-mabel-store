@@ -75,33 +75,51 @@ st.markdown(f"""
 .buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
 .buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
 
-/* Cartões do catálogo principal */
+/* Cartões do catálogo principal: mesmo desenho dos cartões de Destaques.
+   A foto ocupa um quadrado branco no topo; nome, categoria, quantidade,
+   preço e ações ficam alinhados na área inferior do mesmo cartão. */
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
     min-height:100%; width:100%; min-width:0; box-sizing:border-box;
     border:1px solid var(--mabel-border) !important;
     border-radius:18px !important; background:#FFFFFF !important;
-    padding:.8rem !important; box-shadow:0 5px 18px rgba(89,54,111,.07);
+    padding:0 !important; box-shadow:0 5px 18px rgba(89,54,111,.07);
     display:flex; flex-direction:column; overflow:hidden;
     transition:box-shadow .18s ease,border-color .18s ease;
+}}
+.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] > div {{
+    min-width:0; flex:1; display:flex; flex-direction:column; box-sizing:border-box;
 }}
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"]:hover {{
     border-color:#D8C3E7 !important; box-shadow:0 8px 23px rgba(89,54,111,.11);
 }}
 .st-key-catalogo-grid [data-testid="stImage"] {{
-    width:100% !important; aspect-ratio:1 / 1; min-width:0; max-width:100%;
+    width:100% !important; aspect-ratio:1 / 1; height:auto !important;
+    min-width:0; max-width:100%; margin:0 !important;
     display:flex !important; align-items:center; justify-content:center;
     overflow:hidden; background:#FFFFFF !important; border:1px solid #F0EAF4;
-    border-radius:13px; padding:6px; box-sizing:border-box;
+    border-radius:17px 17px 13px 13px; padding:9px; box-sizing:border-box;
 }}
 .st-key-catalogo-grid [data-testid="stImage"] img {{
-    height:100% !important; width:100% !important; max-width:100% !important;
-    object-fit:contain !important; background:#FFFFFF; border-radius:9px;
+    display:block; height:100% !important; width:100% !important; max-width:100% !important;
+    aspect-ratio:1 / 1; object-fit:contain !important; background:#FFFFFF; border-radius:9px;
     padding:3px; box-sizing:border-box;
 }}
+.st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
+    width:100%; max-width:100%; min-width:0; padding:0 .9rem; box-sizing:border-box;
+    overflow-wrap:anywhere;
+}}
 .st-key-catalogo-grid .product-image-placeholder {{ aspect-ratio:1 / 1; width:100%; height:auto; background:#FFFFFF; border:1px solid #F0EAF4; border-radius:13px; box-sizing:border-box; }}
-.catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:750; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
-.catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; line-height:1.3; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
-.catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:750; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
+.st-key-catalogo-grid .catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; line-height:1.3; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid [data-testid="stButton"],
+.st-key-catalogo-grid [data-testid="stLinkButton"] {{
+    width:100%; max-width:100%; min-width:0; padding:0 .9rem; box-sizing:border-box;
+}}
+.st-key-catalogo-grid [data-testid="stButton"] > button,
+.st-key-catalogo-grid [data-testid="stLinkButton"] > a {{
+    width:100% !important; max-width:100% !important; box-sizing:border-box !important;
+}}
 
 /* Botões: lilás claro, inclusive os antigos botões escuros */
 div[data-testid="stButton"] > button,
@@ -163,11 +181,21 @@ div[data-testid="stButton"] > button:disabled {{
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
-        padding:.6rem !important; border-radius:14px !important;
+        padding:0 !important; border-radius:14px !important;
+    }}
+    .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] > div {{
+        min-width:0; width:100%; box-sizing:border-box;
+    }}
+    .st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
+        padding:0 .6rem; box-sizing:border-box;
+    }}
+    .st-key-catalogo-grid [data-testid="stButton"],
+    .st-key-catalogo-grid [data-testid="stLinkButton"] {{
+        padding:0 .6rem; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] {{
         display:flex !important; width:100% !important; max-width:100% !important;
-        min-width:0 !important; aspect-ratio:1 / 1; padding:4px; border-radius:11px;
+        min-width:0 !important; aspect-ratio:1 / 1; padding:6px; border-radius:13px 13px 11px 11px;
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] img {{

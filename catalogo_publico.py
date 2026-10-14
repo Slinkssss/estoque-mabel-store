@@ -224,8 +224,9 @@ div[data-testid="stButton"] > button:disabled {{
         display:grid !important;
         grid-template-columns:repeat(2,minmax(0,1fr)) !important;
         align-items:stretch !important;
-        column-gap:.6rem !important; row-gap:.7rem !important;
-        width:100% !important; max-width:100% !important; min-width:0 !important;
+        column-gap:.72rem !important; row-gap:.82rem !important;
+        width:94% !important; max-width:460px !important; min-width:0 !important;
+        margin-left:auto !important; margin-right:auto !important;
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="column"] {{
@@ -239,17 +240,19 @@ div[data-testid="stButton"] > button:disabled {{
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
-        padding:0 !important; border-radius:14px !important;
+        width:94% !important; max-width:100% !important;
+        margin:.12rem auto !important; padding:0 !important;
+        border-radius:14px !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] > div {{
         min-width:0; width:100%; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
-        padding:0 .6rem; box-sizing:border-box;
+        padding:0 .5rem; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stButton"],
     .st-key-catalogo-grid [data-testid="stLinkButton"] {{
-        padding:0 .6rem; box-sizing:border-box;
+        padding:0 .5rem; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] {{
         display:flex !important; width:100% !important; max-width:100% !important;
@@ -269,8 +272,8 @@ div[data-testid="stButton"] > button:disabled {{
         font-size:.68rem !important; line-height:1.25 !important;
         overflow-wrap:anywhere; min-height:0; padding:.22rem .42rem;
     }}
-    .st-key-catalogo-grid .product-price {{ font-size:1rem !important; overflow-wrap:anywhere; }}
-    .st-key-catalogo-grid .old-price {{ font-size:.75rem !important; }}
+    .st-key-catalogo-grid .product-price {{ font-size:.96rem !important; overflow-wrap:anywhere; margin:.28rem 0 .55rem; }}
+    .st-key-catalogo-grid .old-price {{ font-size:.72rem !important; }}
     .st-key-catalogo-grid [data-testid="stButton"] > button,
     .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{
         display:flex !important; align-items:center !important; justify-content:center !important;
@@ -288,15 +291,16 @@ div[data-testid="stButton"] > button:disabled {{
        Sem trilho horizontal: nenhum cartão empurra o vizinho para o lado. */
     .product-section-grid {{
         grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:.6rem !important; row-gap:.7rem !important;
-        width:100% !important; max-width:100% !important; min-width:0 !important;
+        column-gap:.72rem !important; row-gap:.82rem !important;
+        width:94% !important; max-width:460px !important; min-width:0 !important;
+        margin-left:auto !important; margin-right:auto !important;
     }}
-    .product-card {{ width:100%; min-width:0; border-radius:14px; }}
-    .product-image,.product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; padding:6px; border-radius:11px; }}
-    .product-info {{ padding:.6rem; min-width:0; }}
-    .product-name {{ font-size:.88rem; min-height:2.6em; overflow-wrap:anywhere; }}
-    .product-category {{ font-size:.68rem; padding:.22rem .42rem; max-width:100%; }}
-    .stock-quantity,.catalog-stock-quantity {{ font-size:.68rem; line-height:1.3; margin:.05rem 0 .42rem; }}
+    .product-card {{ width:94%; min-width:0; margin:0 auto; border-radius:14px; }}
+    .product-image,.product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; padding:5px; border-radius:11px; }}
+    .product-info {{ padding:.5rem .52rem; min-width:0; }}
+    .product-name {{ font-size:.86rem; line-height:1.32; min-height:2.55em; overflow-wrap:anywhere; }}
+    .product-category {{ font-size:.66rem; padding:.2rem .38rem; max-width:100%; margin:.4rem 0; }}
+    .stock-quantity,.catalog-stock-quantity {{ font-size:.66rem; line-height:1.3; margin:.03rem 0 .36rem; }}
     /* Menos efeitos/retrabalho no celular e imagens sempre contidas no cartão. */
     .product-card,.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
         transform:none !important; transition:none !important;
@@ -304,10 +308,11 @@ div[data-testid="stButton"] > button:disabled {{
     .product-image,.product-image-placeholder {{ max-width:100%; }}
     .st-key-catalogo-grid [data-testid="stImage"] img {{ content-visibility:auto; }}
     .st-key-catalogo-grid .product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; border-radius:11px; }}
-    .product-price {{ font-size:1rem; overflow-wrap:anywhere; }}
-    .buy-link {{ padding:.55rem .3rem; font-size:.72rem; line-height:1.2; overflow-wrap:anywhere; }}
-    .description-toggle summary {{ padding:.5rem .3rem; font-size:.73rem; line-height:1.2; }}
-    .description-content {{ padding:.55rem; font-size:.74rem; line-height:1.4; }}
+    .product-price {{ font-size:.96rem; overflow-wrap:anywhere; margin:.28rem 0 .55rem; }}
+    .buy-link {{ padding:.48rem .24rem; font-size:.69rem; line-height:1.22; overflow-wrap:anywhere; border-radius:9px; }}
+    .description-toggle {{ margin-bottom:.5rem; }}
+    .description-toggle summary {{ padding:.46rem .24rem; font-size:.7rem; line-height:1.22; border-radius:9px; }}
+    .description-content {{ padding:.5rem; font-size:.73rem; line-height:1.4; }}
 }}
 </style>
 """, unsafe_allow_html=True)

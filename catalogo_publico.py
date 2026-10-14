@@ -71,27 +71,29 @@ st.markdown(f"""
 .product-category {{ display:inline-block; width:fit-content; max-width:100%; margin:.55rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.24rem .62rem; font-size:.74rem; overflow-wrap:anywhere; }}
 .product-price {{ color:{COR_ESCURO}; font-weight:800; font-size:1.18rem; margin:.35rem 0 .7rem; }}
 .old-price {{ color:#827787; text-decoration:line-through; font-size:.86rem; margin-top:.35rem; }}
-.availability {{ display:inline-block; width:fit-content; max-width:100%; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.25rem .55rem; font-size:.72rem; line-height:1.3; font-weight:750; margin:.1rem 0 .45rem; white-space:normal; overflow-wrap:anywhere; }}
-.out-of-stock {{ display:inline-block; width:fit-content; max-width:100%; background:#FCE8E8; color:#9B2525; border-radius:99px; padding:.25rem .55rem; font-size:.72rem; line-height:1.3; font-weight:750; margin:.1rem 0 .45rem; white-space:normal; overflow-wrap:anywhere; }}
+.stock-quantity {{ display:inline-block; width:fit-content; max-width:100%; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; white-space:normal; overflow-wrap:anywhere; }}
 .buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
 .buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
 
 /* Cartões do catálogo principal */
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
-    min-height:100%; border:1px solid var(--mabel-border) !important;
+    min-height:100%; width:100%; min-width:0; box-sizing:border-box;
+    border:1px solid var(--mabel-border) !important;
     border-radius:18px !important; background:#FFFFFF !important;
-    padding:.8rem !important; box-shadow:0 5px 18px rgba(89,54,111,.065);
+    padding:.8rem !important; box-shadow:0 5px 18px rgba(89,54,111,.07);
+    display:flex; flex-direction:column; overflow:hidden;
     transition:box-shadow .18s ease,border-color .18s ease;
 }}
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"]:hover {{
     border-color:#D8C3E7 !important; box-shadow:0 8px 23px rgba(89,54,111,.11);
 }}
 .st-key-catalogo-grid [data-testid="stImage"] img {{
-    height:190px !important; width:100% !important; object-fit:contain !important;
+    height:205px !important; width:100% !important; object-fit:contain !important;
     background:#FFFFFF; border-radius:12px; padding:5px; box-sizing:border-box;
 }}
 .catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:750; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
-.catalog-category {{ display:block; color:{COR_PRINCIPAL}; font-size:.8rem; min-height:1.4rem; margin-bottom:.45rem; }}
+.catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; line-height:1.3; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
+.catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
 
 /* Botões: lilás claro, inclusive os antigos botões escuros */
 div[data-testid="stButton"] > button,
@@ -153,7 +155,7 @@ div[data-testid="stButton"] > button:disabled {{
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
-        padding:.55rem !important; border-radius:14px !important;
+        padding:.6rem !important; border-radius:14px !important;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] {{ width:100% !important; min-width:0 !important; }}
     .st-key-catalogo-grid [data-testid="stImage"] img {{
@@ -163,10 +165,11 @@ div[data-testid="stButton"] > button:disabled {{
     .st-key-catalogo-grid .catalog-product-name {{
         font-size:.88rem !important; line-height:1.3 !important;
         min-height:2.6em; overflow-wrap:anywhere; word-break:normal;
+        margin:.2rem 0 .35rem;
     }}
     .st-key-catalogo-grid .catalog-category {{
-        font-size:.72rem !important; line-height:1.25 !important;
-        overflow-wrap:anywhere; min-height:1.2rem;
+        font-size:.68rem !important; line-height:1.25 !important;
+        overflow-wrap:anywhere; min-height:0; padding:.22rem .42rem;
     }}
     .st-key-catalogo-grid .product-price {{ font-size:1rem !important; overflow-wrap:anywhere; }}
     .st-key-catalogo-grid .old-price {{ font-size:.75rem !important; }}
@@ -195,7 +198,7 @@ div[data-testid="stButton"] > button:disabled {{
     .product-info {{ padding:.6rem; min-width:0; }}
     .product-name {{ font-size:.88rem; min-height:2.6em; overflow-wrap:anywhere; }}
     .product-category {{ font-size:.68rem; padding:.22rem .42rem; max-width:100%; }}
-    .availability,.out-of-stock {{ font-size:.66rem; padding:.22rem .4rem; }}
+    .stock-quantity,.catalog-stock-quantity {{ font-size:.68rem; line-height:1.3; margin:.05rem 0 .42rem; }}
     /* Menos efeitos/retrabalho no celular e imagens sempre contidas no cartão. */
     .product-card,.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
         transform:none !important; transition:none !important;
@@ -241,12 +244,12 @@ def abrir_conexao():
 
 @st.cache_data(ttl=30, max_entries=5, show_spinner=False)
 def carregar_dados():
-    """Carrega produtos incluindo os sem estoque; cache curto reduz acessos ao banco."""
+    """Carrega todos os produtos; cache curto reduz acessos ao banco."""
     conn = abrir_conexao()
     try:
         with conn:
             with conn.cursor() as cur:
-                # Sem filtro de quantidade: itens fora de estoque continuam visíveis.
+                # Sem filtro de quantidade: todos os itens permanecem visíveis.
                 cur.execute("""
                     SELECT id, nome, categoria, preco,
                            quantidade, foto, preco_promocional
@@ -328,14 +331,10 @@ def otimizar_imagem_catalogo(foto_bytes, max_lado=640, qualidade=74):
         return (tipo, foto_bytes)
 
 
-def estoque_label(quantidade):
-    """Texto do estoque real disponível, singular ou plural."""
+def quantidade_disponivel_html(quantidade, css_class="stock-quantity"):
+    """Mostra somente a quantidade, sem etiquetas de status."""
     estoque = max(0, int(quantidade or 0))
-    if estoque == 0:
-        return '<div class="out-of-stock">● Fora de estoque</div>'
-    if estoque == 1:
-        return '<div class="availability">✓ 1 unidade disponível</div>'
-    return f'<div class="availability">✓ {estoque} unidades disponíveis</div>'
+    return f'<div class="{css_class}">Quantidade disponível: {estoque}</div>'
 
 
 def categorias_do_produto(valor):
@@ -373,7 +372,7 @@ def card_html(produto):
     categoria_segura = html.escape(" · ".join(categorias_do_produto(categoria)))
 
     estoque = max(0, int(quantidade or 0))
-    status_html = estoque_label(estoque)
+    quantidade_html = quantidade_disponivel_html(estoque)
     if estoque > 0:
         rotulo_botao = "Pedir pelo WhatsApp"
     else:
@@ -382,7 +381,7 @@ def card_html(produto):
     mensagem = (
         f"Olá! Tenho interesse no produto: {nome or 'Produto'}. "
         f"Preço informado: {moeda(preco_atual)}. "
-        + ("Vi que está fora de estoque e gostaria de consultar a reposição." if int(quantidade or 0) <= 0 else "")
+        + ("No momento, o catálogo mostra 0 unidades disponíveis. Gostaria de consultar a reposição." if int(quantidade or 0) <= 0 else "")
     )
     link = link_whatsapp(mensagem)
 
@@ -400,7 +399,7 @@ def card_html(produto):
         f'<article class="product-card">{imagem_html(foto, nome)}'
         f'<div class="product-info"><div class="product-name">{nome_seguro}</div>'
         f'<span class="product-category">{categoria_segura}</span>'
-        f'{status_html}{preco_html}'
+        f'{quantidade_html}{preco_html}'
         f'<a class="buy-link" href="{link}" target="_blank" rel="noopener">'
         f'{rotulo_botao}</a></div></article>'
     )
@@ -446,7 +445,10 @@ def renderizar_cartao_interativo(produto, indice):
             unsafe_allow_html=True,
         )
 
-        st.markdown(estoque_label(estoque), unsafe_allow_html=True)
+        st.markdown(
+            quantidade_disponivel_html(estoque, "catalog-stock-quantity"),
+            unsafe_allow_html=True,
+        )
 
         if em_promocao:
             st.markdown(
@@ -491,7 +493,7 @@ def renderizar_cartao_interativo(produto, indice):
         else:
             mensagem = (
                 f"Olá! Gostaria de consultar a reposição do produto {nome}, "
-                f"que aparece como fora de estoque no catálogo."
+                f"que está com 0 unidades disponíveis no catálogo."
             )
             texto_link = "Consultar pelo WhatsApp"
         st.link_button(
@@ -543,7 +545,7 @@ def mostrar_carrinho(produtos):
                 st.markdown(f"**{html.escape(str(nome or 'Produto'))}**", unsafe_allow_html=True)
                 st.caption(f"{moeda(preco_atual)} cada · Subtotal: {moeda(subtotal)}")
                 if estoque <= 0:
-                    st.markdown('<span class="out-of-stock">Fora de estoque</span>', unsafe_allow_html=True)
+                    st.caption("Quantidade disponível: 0")
                     tem_indisponivel = True
                 elif qtd > estoque:
                     st.warning(f"Estoque atual: {estoque}. Reduza a quantidade.")
@@ -572,7 +574,7 @@ def mostrar_carrinho(produtos):
 
         if tem_indisponivel or tem_quantidade_acima_estoque:
             st.warning(
-                "Revise o carrinho: há produto fora de estoque ou quantidade maior que o estoque disponível. "
+                "Revise o carrinho: há produto sem unidades disponíveis ou quantidade maior que o saldo atual. "
                 "Remova o item indisponível ou reduza a quantidade para enviar o pedido."
             )
         else:
@@ -632,8 +634,7 @@ st.markdown(
 # Carrinho interativo: o conteúdo fica guardado na sessão do visitante.
 mostrar_carrinho(produtos)
 
-# Carrosséis configurados no painel administrativo. Os produtos fora de estoque
-# também são exibidos, com o estado claramente indicado.
+# Produtos marcados no painel aparecem em grades, com a quantidade disponível.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = (
     secao_grade("✨ Destaques", destaques)
@@ -647,7 +648,7 @@ st.markdown('<h2 class="section-title">Nosso catálogo</h2>', unsafe_allow_html=
 if not produtos:
     st.info("Ainda não há produtos cadastrados.")
 else:
-    c1, c2, c3 = st.columns([2, 1, 1])
+    c1, c2 = st.columns([2, 1])
     busca = c1.text_input(
         "Pesquisar produto",
         placeholder="Digite o nome do produto...",
@@ -668,11 +669,6 @@ else:
         placeholder="Todas as categorias",
         help="Selecione uma ou mais categorias. Será exibido qualquer produto que corresponda a pelo menos uma delas.",
     )
-    filtro_estoque = c3.selectbox(
-        "Disponibilidade",
-        ["Todos os produtos", "Em estoque", "Fora de estoque"],
-    )
-
     filtrados = [
         p for p in produtos
         if (
@@ -683,11 +679,6 @@ else:
         and (
             not categorias_selecionadas
             or bool(set(categorias_do_produto(p[2])) & set(categorias_selecionadas))
-        )
-        and (
-            filtro_estoque == "Todos os produtos"
-            or (filtro_estoque == "Em estoque" and int(p[4] or 0) > 0)
-            or (filtro_estoque == "Fora de estoque" and int(p[4] or 0) <= 0)
         )
     ]
 
@@ -706,10 +697,14 @@ else:
     if filtrados:
         st.caption(f"Exibindo {len(filtrados)} produto(s)")
         with st.container(key="catalogo-grid"):
-            colunas = st.columns(4, gap="medium")
-            for indice, produto in enumerate(filtrados):
-                with colunas[indice % len(colunas)]:
-                    renderizar_cartao_interativo(produto, indice)
+            # Cada grupo de quatro cartões forma uma linha no desktop. No celular,
+            # o CSS reorganiza cada grupo em duas linhas de dois, sem trocar a ordem.
+            for inicio in range(0, len(filtrados), 4):
+                linha_produtos = filtrados[inicio:inicio + 4]
+                colunas = st.columns(4, gap="medium")
+                for posicao, produto in enumerate(linha_produtos):
+                    with colunas[posicao]:
+                        renderizar_cartao_interativo(produto, inicio + posicao)
     else:
         st.info("Nenhum produto encontrado com esses filtros.")
 

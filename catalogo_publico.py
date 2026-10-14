@@ -53,12 +53,13 @@ st.markdown(f"""
 .mabel-promo {{ display:inline-block; background:{COR_ESCURO}; color:white; border-radius:99px; padding:.38rem .9rem; font-size:.76rem; font-weight:750; letter-spacing:.07em; margin-bottom:.75rem; }}
 .section-title {{ color:{COR_TEXTO}; font-size:1.55rem; font-weight:780; margin:1.8rem 0 .85rem; letter-spacing:-.02em; }}
 
-/* Carrosséis */
-.carousel {{ display:flex; align-items:stretch; gap:1rem; overflow-x:auto; padding:.35rem .15rem 1.1rem; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }}
-.carousel::-webkit-scrollbar {{ height:7px; }}
-.carousel::-webkit-scrollbar-track {{ background:{COR_CLARA}; border-radius:20px; }}
-.carousel::-webkit-scrollbar-thumb {{ background:{COR_PRINCIPAL}; border-radius:20px; }}
-.product-card {{ flex:0 0 232px; width:232px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--mabel-border); border-radius:18px; background:#fff; scroll-snap-align:start; box-shadow:0 5px 18px rgba(89,54,111,.07); transition:transform .18s ease,box-shadow .18s ease; }}
+/* Grades responsivas para Destaques, Promoções e Kits (sem carrossel) */
+.product-section-grid {{
+    display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+    align-items:stretch; gap:1rem; width:100%; max-width:100%; min-width:0;
+    padding:.25rem 0 .6rem; box-sizing:border-box;
+}}
+.product-card {{ min-width:0; width:100%; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--mabel-border); border-radius:18px; background:#fff; box-shadow:0 5px 18px rgba(89,54,111,.07); transition:transform .18s ease,box-shadow .18s ease; box-sizing:border-box; }}
 .product-card:hover {{ transform:translateY(-2px); box-shadow:0 9px 24px rgba(89,54,111,.12); }}
 .product-image {{ width:100%; height:205px; object-fit:contain; background:#fff; display:block; padding:9px; box-sizing:border-box; }}
 .product-image-placeholder {{ height:205px; display:flex; align-items:center; justify-content:center; background:{COR_CLARA}; color:{COR_PRINCIPAL}; font-size:2.6rem; }}
@@ -115,19 +116,84 @@ div[data-testid="stButton"] > button:disabled {{
 .stSelectbox [data-baseweb="select"] {{ border-radius:11px; }}
 [data-testid="stVerticalBlockBorderWrapper"] {{ border-radius:17px; }}
 .cart-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:1rem 1.1rem; border-radius:14px; color:{COR_ESCURO}; line-height:1.5; }}
-@media(max-width:900px) {{ .product-card {{ flex-basis:215px; width:215px; }} }}
+@media(max-width:900px) {{ .product-section-grid {{ grid-template-columns:repeat(3,minmax(0,1fr)); }} }}
 @media(max-width:620px) {{
-    .block-container {{ padding-left:.7rem; padding-right:.7rem; padding-top:.7rem; }}
-    .mabel-header {{ padding:1.5rem .8rem; border-radius:20px; }}
-    .mabel-logo-img {{ width:min(80%,230px); }}
-    .section-title {{ font-size:1.3rem; }}
-    .product-card {{ flex-basis:185px; width:185px; border-radius:15px; }}
-    .product-image,.product-image-placeholder {{ height:165px; }}
-    .product-info {{ padding:.8rem; }}
-    .st-key-catalogo-grid [data-testid="stImage"] img {{ height:145px !important; }}
-    .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{ padding:.55rem !important; border-radius:14px !important; }}
-    .st-key-catalogo-grid [data-testid="stButton"] > button, .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{ font-size:.82rem !important; padding:.45rem .35rem !important; }}
-    .st-key-catalogo-grid [data-testid="stHorizontalBlock"] {{ gap:.55rem; }}
+    .block-container {{
+        width:100% !important; max-width:100% !important;
+        padding-left:.65rem !important; padding-right:.65rem !important;
+        padding-top:.7rem; padding-bottom:1.5rem;
+        box-sizing:border-box !important;
+    }}
+    .mabel-header {{ padding:1.35rem .75rem; border-radius:18px; }}
+    .mabel-logo-img {{ width:min(80%,210px); }}
+    .section-title {{ font-size:1.25rem; margin:1.35rem 0 .7rem; }}
+
+    /* O catálogo principal vira uma grade real de 2 colunas no celular.
+       Não usa rolagem horizontal nem transforma os produtos em carrossel. */
+    .st-key-catalogo-grid {{ width:100% !important; max-width:100% !important; min-width:0 !important; }}
+    .st-key-catalogo-grid [data-testid="stHorizontalBlock"] {{
+        display:grid !important;
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        align-items:stretch !important;
+        column-gap:.6rem !important; row-gap:.7rem !important;
+        width:100% !important; max-width:100% !important; min-width:0 !important;
+        box-sizing:border-box !important;
+    }}
+    .st-key-catalogo-grid [data-testid="column"] {{
+        width:100% !important; max-width:100% !important; min-width:0 !important;
+        flex:none !important; margin:0 !important; padding:0 !important;
+        box-sizing:border-box !important;
+    }}
+    .st-key-catalogo-grid [data-testid="column"] > div,
+    .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
+        width:100% !important; max-width:100% !important; min-width:0 !important;
+        box-sizing:border-box !important;
+    }}
+    .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
+        padding:.55rem !important; border-radius:14px !important;
+    }}
+    .st-key-catalogo-grid [data-testid="stImage"] {{ width:100% !important; min-width:0 !important; }}
+    .st-key-catalogo-grid [data-testid="stImage"] img {{
+        display:block; height:125px !important; width:100% !important;
+        max-width:100% !important; object-fit:contain !important;
+    }}
+    .st-key-catalogo-grid .catalog-product-name {{
+        font-size:.88rem !important; line-height:1.3 !important;
+        min-height:2.6em; overflow-wrap:anywhere; word-break:normal;
+    }}
+    .st-key-catalogo-grid .catalog-category {{
+        font-size:.72rem !important; line-height:1.25 !important;
+        overflow-wrap:anywhere; min-height:1.2rem;
+    }}
+    .st-key-catalogo-grid .product-price {{ font-size:1rem !important; overflow-wrap:anywhere; }}
+    .st-key-catalogo-grid .old-price {{ font-size:.75rem !important; }}
+    .st-key-catalogo-grid [data-testid="stButton"] > button,
+    .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{
+        display:flex !important; align-items:center !important; justify-content:center !important;
+        width:100% !important; max-width:100% !important; min-width:0 !important;
+        min-height:42px !important; height:auto !important;
+        padding:.42rem .28rem !important; font-size:.72rem !important;
+        line-height:1.2 !important; white-space:normal !important;
+        overflow-wrap:anywhere !important; word-break:normal !important;
+        box-sizing:border-box !important;
+    }}
+    .st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
+        width:100%; max-width:100%; min-width:0; overflow-wrap:anywhere;
+    }}
+    /* Todas as seções de produtos também usam 2 colunas no celular.
+       Sem trilho horizontal: nenhum cartão empurra o vizinho para o lado. */
+    .product-section-grid {{
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        column-gap:.6rem !important; row-gap:.7rem !important;
+        width:100% !important; max-width:100% !important; min-width:0 !important;
+    }}
+    .product-card {{ width:100%; min-width:0; border-radius:14px; }}
+    .product-image,.product-image-placeholder {{ height:125px; }}
+    .product-info {{ padding:.6rem; min-width:0; }}
+    .product-name {{ font-size:.88rem; min-height:2.6em; overflow-wrap:anywhere; }}
+    .product-category {{ font-size:.68rem; padding:.22rem .42rem; max-width:100%; }}
+    .product-price {{ font-size:1rem; overflow-wrap:anywhere; }}
+    .buy-link {{ padding:.55rem .3rem; font-size:.72rem; line-height:1.2; overflow-wrap:anywhere; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -279,13 +345,14 @@ def card_html(produto):
     )
 
 
-def secao_carrossel(titulo, produtos_secao):
+def secao_grade(titulo, produtos_secao):
+    """Exibe os produtos em grade responsiva, sem rolagem horizontal."""
     if not produtos_secao:
         return ""
     cards = "".join(card_html(p) for p in produtos_secao)
     return (
         f'<section><h2 class="section-title">{titulo}</h2>'
-        f'<div class="carousel">{cards}</div></section>'
+        f'<div class="product-section-grid">{cards}</div></section>'
     )
 
 
@@ -512,9 +579,9 @@ mostrar_carrinho(produtos)
 # também são exibidos, com o estado claramente indicado.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = (
-    secao_carrossel("✨ Destaques", destaques)
-    + secao_carrossel("🔥 Promoções", promocoes_selecionadas)
-    + secao_carrossel("🎁 Kits", kits)
+    secao_grade("✨ Destaques", destaques)
+    + secao_grade("🔥 Promoções", promocoes_selecionadas)
+    + secao_grade("🎁 Kits", kits)
 )
 if html_secoes:
     st.html(html_secoes)

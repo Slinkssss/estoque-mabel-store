@@ -64,16 +64,16 @@ st.markdown(f"""
     box-shadow:0 7px 22px rgba(89,54,111,.055);
 }}
 .mabel-header-main {{
-    display:grid; grid-template-columns:76px minmax(0,1fr) 76px;
-    align-items:center; gap:.35rem; min-height:72px;
+    display:grid; grid-template-columns:84px minmax(0,1fr) 84px;
+    align-items:center; gap:.35rem; min-height:80px;
 }}
 .mabel-logo-wrap {{ grid-column:1; display:flex; align-items:center; justify-content:flex-start; min-width:0; }}
-.mabel-logo-img {{ width:68px; height:68px; max-width:100%; object-fit:contain; display:block; margin:0; }}
+.mabel-logo-img {{ width:76px; height:76px; max-width:100%; object-fit:contain; display:block; margin:0; }}
 .mabel-header-title {{ grid-column:2; text-align:center; min-width:0; }}
 .mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:var(--mabel-font-display); font-size:clamp(2.25rem,4.1vw,3.05rem); font-weight:400; letter-spacing:0; line-height:1.08; }}
 .mabel-header-balance {{ grid-column:3; min-width:0; }}
 .mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.035em; line-height:1.55; }}
-.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.95rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:0; line-height:1.2; }}
+.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.95rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:0; line-height:1.2; text-align:center; }}
 
 /* Carrinho discreto: abre o conteúdo apenas quando o botão é acionado. */
 .st-key-cart-toolbar {{ margin:.45rem 0 1rem; width:100%; }}
@@ -129,8 +129,8 @@ div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-heig
     background:#FCFAFD; color:#4F4557; font-size:.88rem; line-height:1.45; white-space:pre-line;
     overflow-wrap:anywhere; box-sizing:border-box; }}
 
-/* Cartões do catálogo principal: mesmo desenho dos cartões de Destaques.
-   A foto ocupa um quadrado branco no topo; informações e ações ficam na área inferior. */
+/* Cartões do catálogo principal: visual coordenado com os Destaques,
+   porém mais compacto para mostrar mais produtos de uma vez. */
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
     min-height:100%; width:100%; min-width:0; box-sizing:border-box;
     border:1px solid var(--mabel-border) !important;
@@ -146,11 +146,11 @@ div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-heig
     border-color:#D8C3E7 !important; box-shadow:0 8px 23px rgba(89,54,111,.11);
 }}
 .st-key-catalogo-grid [data-testid="stImage"] {{
-    width:100% !important; aspect-ratio:1 / 1; height:auto !important;
-    min-width:0; max-width:100%; margin:0 !important;
+    width:84% !important; max-width:178px !important; aspect-ratio:1 / 1; height:auto !important;
+    min-width:0; margin:.5rem auto .2rem !important;
     display:flex !important; align-items:center; justify-content:center;
     overflow:hidden; background:#FFFFFF !important; border:1px solid #F0EAF4;
-    border-radius:17px 17px 13px 13px; padding:9px; box-sizing:border-box;
+    border-radius:13px; padding:6px; box-sizing:border-box;
 }}
 .st-key-catalogo-grid [data-testid="stImage"] img {{
     display:block; height:100% !important; width:100% !important; max-width:100% !important;
@@ -158,16 +158,16 @@ div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-heig
     padding:3px; box-sizing:border-box;
 }}
 .st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
-    width:100%; max-width:100%; min-width:0; padding:0 .9rem; box-sizing:border-box;
+    width:100%; max-width:100%; min-width:0; padding:0 .68rem; box-sizing:border-box;
     overflow-wrap:anywhere;
 }}
 .st-key-catalogo-grid .product-image-placeholder {{ aspect-ratio:1 / 1; width:100%; height:auto; background:#FFFFFF; border:1px solid #F0EAF4; border-radius:13px; box-sizing:border-box; }}
-.st-key-catalogo-grid .catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:600; letter-spacing:.002em; line-height:1.4; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
-.st-key-catalogo-grid .catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; font-weight:400; letter-spacing:.01em; line-height:1.35; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
-.st-key-catalogo-grid .catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.4; font-weight:450; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-product-name {{ color:{COR_TEXTO}; font-size:.94rem; font-weight:600; letter-spacing:.002em; line-height:1.35; min-height:2.45em; overflow-wrap:anywhere; margin:.16rem 0 .28rem; }}
+.st-key-catalogo-grid .catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.72rem; font-weight:400; letter-spacing:.01em; line-height:1.3; min-height:0; margin:.12rem 0 .34rem; padding:.22rem .52rem; border-radius:30px; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.74rem; line-height:1.35; font-weight:450; margin:.02rem 0 .34rem; overflow-wrap:anywhere; }}
 .st-key-catalogo-grid [data-testid="stButton"],
 .st-key-catalogo-grid [data-testid="stLinkButton"] {{
-    width:100%; max-width:100%; min-width:0; padding:0 .9rem; box-sizing:border-box;
+    width:100%; max-width:100%; min-width:0; padding:0 .68rem; box-sizing:border-box;
 }}
 .st-key-catalogo-grid [data-testid="stButton"] > button,
 .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{
@@ -209,13 +209,13 @@ div[data-testid="stButton"] > button:disabled {{
         box-sizing:border-box !important;
     }}
     .mabel-header {{ padding:.65rem .65rem .7rem; border-radius:17px; }}
-    .mabel-header-main {{ grid-template-columns:54px minmax(0,1fr) 54px; min-height:54px; gap:.2rem; }}
-    .mabel-logo-img {{ width:50px; height:50px; }}
+    .mabel-header-main {{ grid-template-columns:60px minmax(0,1fr) 60px; min-height:60px; gap:.2rem; }}
+    .mabel-logo-img {{ width:56px; height:56px; }}
     .mabel-header-title h1 {{ font-size:2.2rem; letter-spacing:0; line-height:1.05; }}
     .mabel-subtitle {{ font-size:.78rem; line-height:1.4; margin-top:.3rem; letter-spacing:.01em; }}
     .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; }}
     .st-key-cart-toolbar div[data-testid="stPopover"] > button {{ padding:.36rem .68rem !important; font-size:.78rem !important; }}
-    .section-title {{ font-size:1.62rem; margin:1.25rem 0 .7rem; }}
+    .section-title {{ font-size:1.72rem; margin:1.25rem 0 .7rem; text-align:center; }}
 
     /* O catálogo principal vira uma grade real de 2 colunas no celular.
        Não usa rolagem horizontal nem transforma os produtos em carrossel. */
@@ -240,23 +240,24 @@ div[data-testid="stButton"] > button:disabled {{
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
-        width:94% !important; max-width:100% !important;
-        margin:.12rem auto !important; padding:0 !important;
-        border-radius:14px !important;
+        width:92% !important; max-width:100% !important;
+        margin:.1rem auto !important; padding:0 !important;
+        border-radius:13px !important;
     }}
     .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] > div {{
         min-width:0; width:100%; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stMarkdownContainer"] {{
-        padding:0 .5rem; box-sizing:border-box;
+        padding:0 .42rem; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stButton"],
     .st-key-catalogo-grid [data-testid="stLinkButton"] {{
-        padding:0 .5rem; box-sizing:border-box;
+        padding:0 .42rem; box-sizing:border-box;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] {{
-        display:flex !important; width:100% !important; max-width:100% !important;
-        min-width:0 !important; aspect-ratio:1 / 1; padding:6px; border-radius:13px 13px 11px 11px;
+        display:flex !important; width:78% !important; max-width:124px !important;
+        min-width:0 !important; aspect-ratio:1 / 1; height:auto !important;
+        margin:.42rem auto .12rem !important; padding:5px; border-radius:11px;
         box-sizing:border-box !important;
     }}
     .st-key-catalogo-grid [data-testid="stImage"] img {{
@@ -264,23 +265,23 @@ div[data-testid="stButton"] > button:disabled {{
         max-width:100% !important; object-fit:contain !important;
     }}
     .st-key-catalogo-grid .catalog-product-name {{
-        font-size:.88rem !important; line-height:1.3 !important;
-        min-height:2.6em; overflow-wrap:anywhere; word-break:normal;
-        margin:.2rem 0 .35rem;
+        font-size:.82rem !important; line-height:1.28 !important;
+        min-height:2.45em; overflow-wrap:anywhere; word-break:normal;
+        margin:.12rem 0 .25rem;
     }}
     .st-key-catalogo-grid .catalog-category {{
-        font-size:.68rem !important; line-height:1.25 !important;
-        overflow-wrap:anywhere; min-height:0; padding:.22rem .42rem;
+        font-size:.64rem !important; line-height:1.22 !important;
+        overflow-wrap:anywhere; min-height:0; margin:.1rem 0 .28rem; padding:.19rem .35rem;
     }}
-    .st-key-catalogo-grid .product-price {{ font-size:.96rem !important; overflow-wrap:anywhere; margin:.28rem 0 .55rem; }}
+    .st-key-catalogo-grid .product-price {{ font-size:.9rem !important; overflow-wrap:anywhere; margin:.2rem 0 .4rem; }}
     .st-key-catalogo-grid .old-price {{ font-size:.72rem !important; }}
     .st-key-catalogo-grid [data-testid="stButton"] > button,
     .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{
         display:flex !important; align-items:center !important; justify-content:center !important;
         width:100% !important; max-width:100% !important; min-width:0 !important;
-        min-height:42px !important; height:auto !important;
-        padding:.42rem .28rem !important; font-size:.72rem !important;
-        line-height:1.2 !important; white-space:normal !important;
+        min-height:36px !important; height:auto !important;
+        padding:.32rem .22rem !important; font-size:.66rem !important;
+        line-height:1.16 !important; white-space:normal !important;
         overflow-wrap:anywhere !important; word-break:normal !important;
         box-sizing:border-box !important;
     }}
@@ -295,12 +296,12 @@ div[data-testid="stButton"] > button:disabled {{
         width:94% !important; max-width:460px !important; min-width:0 !important;
         margin-left:auto !important; margin-right:auto !important;
     }}
-    .product-card {{ width:94%; min-width:0; margin:0 auto; border-radius:14px; }}
-    .product-image,.product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; padding:5px; border-radius:11px; }}
-    .product-info {{ padding:.5rem .52rem; min-width:0; }}
-    .product-name {{ font-size:.86rem; line-height:1.32; min-height:2.55em; overflow-wrap:anywhere; }}
-    .product-category {{ font-size:.66rem; padding:.2rem .38rem; max-width:100%; margin:.4rem 0; }}
-    .stock-quantity,.catalog-stock-quantity {{ font-size:.66rem; line-height:1.3; margin:.03rem 0 .36rem; }}
+    .product-card {{ width:100%; min-width:0; margin:0; border-radius:13px; }}
+    .product-image,.product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; padding:5px; border-radius:10px; }}
+    .product-info {{ padding:.48rem .42rem; min-width:0; }}
+    .product-name {{ font-size:.8rem; line-height:1.28; min-height:2.4em; overflow-wrap:anywhere; }}
+    .product-category {{ font-size:.62rem; padding:.19rem .34rem; max-width:100%; margin:.32rem 0; }}
+    .stock-quantity,.catalog-stock-quantity {{ font-size:.63rem; line-height:1.26; margin:.02rem 0 .3rem; }}
     /* Menos efeitos/retrabalho no celular e imagens sempre contidas no cartão. */
     .product-card,.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
         transform:none !important; transition:none !important;
@@ -309,10 +310,10 @@ div[data-testid="stButton"] > button:disabled {{
     .st-key-catalogo-grid [data-testid="stImage"] img {{ content-visibility:auto; }}
     .st-key-catalogo-grid .product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; border-radius:11px; }}
     .product-price {{ font-size:.96rem; overflow-wrap:anywhere; margin:.28rem 0 .55rem; }}
-    .buy-link {{ padding:.48rem .24rem; font-size:.69rem; line-height:1.22; overflow-wrap:anywhere; border-radius:9px; }}
-    .description-toggle {{ margin-bottom:.5rem; }}
-    .description-toggle summary {{ padding:.46rem .24rem; font-size:.7rem; line-height:1.22; border-radius:9px; }}
-    .description-content {{ padding:.5rem; font-size:.73rem; line-height:1.4; }}
+    .buy-link {{ padding:.42rem .2rem; font-size:.65rem; line-height:1.18; overflow-wrap:anywhere; border-radius:8px; }}
+    .description-toggle {{ margin-bottom:.38rem; }}
+    .description-toggle summary {{ padding:.4rem .2rem; font-size:.65rem; line-height:1.18; border-radius:8px; }}
+    .description-content {{ padding:.45rem; font-size:.7rem; line-height:1.35; }}
 }}
 </style>
 """, unsafe_allow_html=True)

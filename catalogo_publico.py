@@ -32,33 +32,103 @@ COR_TEXTO = "#30283A"
 
 st.markdown(f"""
 <style>
+:root {{
+    --mabel-purple: {COR_PRINCIPAL};
+    --mabel-purple-dark: {COR_ESCURO};
+    --mabel-lilac: {COR_CLARA};
+    --mabel-border: #E8DDEC;
+}}
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
-.block-container {{ max-width: 1240px; padding-top: 1.1rem; padding-bottom: 2rem; }}
-.mabel-header {{ text-align:center; padding:2.2rem 1.2rem 2rem; border:1px solid #E8DDEC; border-radius:24px; background:linear-gradient(135deg,#FFFFFF 0%,#F5EEF9 100%); box-shadow:0 12px 35px rgba(89,54,111,.08); }}
-.mabel-logo-img {{ width:min(100%,300px); max-height:300px; object-fit:contain; display:block; margin:.1rem auto .5rem; }}
+.block-container {{ max-width: 1240px; padding-top: 1.15rem; padding-bottom: 2.5rem; }}
+
+/* Cabeçalho */
+.mabel-header {{
+    text-align:center; padding:2rem 1.25rem 1.8rem;
+    border:1px solid var(--mabel-border); border-radius:26px;
+    background:linear-gradient(135deg,#FFFFFF 0%,#F5EEF9 100%);
+    box-shadow:0 12px 32px rgba(89,54,111,.08);
+}}
+.mabel-logo-img {{ width:min(100%,280px); max-height:270px; object-fit:contain; display:block; margin:.1rem auto .5rem; }}
 .mabel-subtitle {{ color:{COR_PRINCIPAL}; margin-top:.45rem; font-size:1.08rem; }}
-.mabel-promo {{ display:inline-block; background:{COR_ESCURO}; color:white; border-radius:99px; padding:.35rem .85rem; font-size:.78rem; font-weight:700; letter-spacing:.06em; margin-bottom:.75rem; }}
-.section-title {{ color:{COR_TEXTO}; font-size:1.55rem; font-weight:750; margin:1.8rem 0 .85rem; }}
-.carousel {{ display:flex; gap:1rem; overflow-x:auto; padding:.2rem .1rem 1rem; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }}
+.mabel-promo {{ display:inline-block; background:{COR_ESCURO}; color:white; border-radius:99px; padding:.38rem .9rem; font-size:.76rem; font-weight:750; letter-spacing:.07em; margin-bottom:.75rem; }}
+.section-title {{ color:{COR_TEXTO}; font-size:1.55rem; font-weight:780; margin:1.8rem 0 .85rem; letter-spacing:-.02em; }}
+
+/* Carrosséis */
+.carousel {{ display:flex; align-items:stretch; gap:1rem; overflow-x:auto; padding:.35rem .15rem 1.1rem; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }}
 .carousel::-webkit-scrollbar {{ height:7px; }}
 .carousel::-webkit-scrollbar-track {{ background:{COR_CLARA}; border-radius:20px; }}
 .carousel::-webkit-scrollbar-thumb {{ background:{COR_PRINCIPAL}; border-radius:20px; }}
-.product-card {{ flex:0 0 205px; width:205px; overflow:hidden; border:1px solid #E8DDEC; border-radius:15px; background:#fff; scroll-snap-align:start; box-shadow:0 4px 14px rgba(89,54,111,.07); }}
-.product-image {{ width:100%; height:190px; object-fit:contain; background:#fff; display:block; }}
-.product-image-placeholder {{ height:190px; display:flex; align-items:center; justify-content:center; background:{COR_CLARA}; color:{COR_PRINCIPAL}; font-size:2.6rem; }}
-.product-info {{ padding:.85rem; }}
-.product-name {{ color:{COR_TEXTO}; font-weight:700; font-size:.98rem; overflow-wrap:anywhere; }}
-.product-category {{ display:inline-block; margin:.45rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.2rem .55rem; font-size:.75rem; }}
-.product-price {{ color:{COR_ESCURO}; font-weight:800; font-size:1.12rem; margin:.25rem 0 .65rem; }}
-.old-price {{ color:#827787; text-decoration:line-through; font-size:.88rem; margin-top:.35rem; }}
-.availability {{ display:inline-block; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.22rem .55rem; font-size:.72rem; font-weight:700; margin:.1rem 0 .45rem; }}
-.out-of-stock {{ display:inline-block; background:#FCE8E8; color:#9B2525; border-radius:99px; padding:.22rem .55rem; font-size:.72rem; font-weight:700; margin:.1rem 0 .45rem; }}
-.buy-link {{ display:block; text-align:center; background:{COR_ESCURO}; color:white !important; text-decoration:none !important; border-radius:9px; padding:.65rem .5rem; font-weight:700; }}
-div[data-testid="stButton"] > button {{ border-radius:10px; border-color:#DCCCE8; color:{COR_ESCURO}; font-weight:650; }}
-div[data-testid="stButton"] > button[kind="primary"] {{ background:{COR_ESCURO}; color:white; border-color:{COR_ESCURO}; }}
-div[data-testid="stLinkButton"] a {{ border-radius:10px; }}
-.cart-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:1rem; border-radius:14px; color:{COR_ESCURO}; }}
-@media(max-width:620px) {{ .block-container {{ padding-left:.7rem; padding-right:.7rem; }} .product-card {{ flex-basis:165px; width:165px; }} .product-image,.product-image-placeholder {{ height:155px; }} .mabel-logo-img {{ width:min(80%,230px); }} }}
+.product-card {{ flex:0 0 232px; width:232px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--mabel-border); border-radius:18px; background:#fff; scroll-snap-align:start; box-shadow:0 5px 18px rgba(89,54,111,.07); transition:transform .18s ease,box-shadow .18s ease; }}
+.product-card:hover {{ transform:translateY(-2px); box-shadow:0 9px 24px rgba(89,54,111,.12); }}
+.product-image {{ width:100%; height:205px; object-fit:contain; background:#fff; display:block; padding:9px; box-sizing:border-box; }}
+.product-image-placeholder {{ height:205px; display:flex; align-items:center; justify-content:center; background:{COR_CLARA}; color:{COR_PRINCIPAL}; font-size:2.6rem; }}
+.product-info {{ padding:1rem; display:flex; flex-direction:column; flex:1; }}
+.product-name {{ color:{COR_TEXTO}; font-weight:750; font-size:1rem; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; }}
+.product-category {{ display:inline-block; width:fit-content; max-width:100%; margin:.55rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.24rem .62rem; font-size:.74rem; overflow-wrap:anywhere; }}
+.product-price {{ color:{COR_ESCURO}; font-weight:800; font-size:1.18rem; margin:.35rem 0 .7rem; }}
+.old-price {{ color:#827787; text-decoration:line-through; font-size:.86rem; margin-top:.35rem; }}
+.availability {{ display:inline-block; width:fit-content; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.25rem .62rem; font-size:.72rem; font-weight:750; margin:.1rem 0 .45rem; }}
+.out-of-stock {{ display:inline-block; width:fit-content; background:#FCE8E8; color:#9B2525; border-radius:99px; padding:.25rem .62rem; font-size:.72rem; font-weight:750; margin:.1rem 0 .45rem; }}
+.buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
+.buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
+
+/* Cartões do catálogo principal */
+.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
+    min-height:100%; border:1px solid var(--mabel-border) !important;
+    border-radius:18px !important; background:#FFFFFF !important;
+    padding:.8rem !important; box-shadow:0 5px 18px rgba(89,54,111,.065);
+    transition:box-shadow .18s ease,border-color .18s ease;
+}}
+.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"]:hover {{
+    border-color:#D8C3E7 !important; box-shadow:0 8px 23px rgba(89,54,111,.11);
+}}
+.st-key-catalogo-grid [data-testid="stImage"] img {{
+    height:190px !important; width:100% !important; object-fit:contain !important;
+    background:#FFFFFF; border-radius:12px; padding:5px; box-sizing:border-box;
+}}
+.catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:750; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
+.catalog-category {{ display:block; color:{COR_PRINCIPAL}; font-size:.8rem; min-height:1.4rem; margin-bottom:.45rem; }}
+
+/* Botões: lilás claro, inclusive os antigos botões escuros */
+div[data-testid="stButton"] > button,
+div[data-testid="stLinkButton"] > a {{
+    border-radius:11px !important; border:1px solid #D5BFE7 !important;
+    background:#E3D3F0 !important; color:{COR_ESCURO} !important;
+    font-weight:700 !important; box-shadow:none !important;
+    transition:background .18s ease,border-color .18s ease,transform .18s ease;
+}}
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stLinkButton"] > a:hover {{
+    background:#D7C0E8 !important; border-color:#C6A9DE !important;
+    color:{COR_ESCURO} !important;
+}}
+div[data-testid="stButton"] > button:focus,
+div[data-testid="stLinkButton"] > a:focus {{
+    box-shadow:0 0 0 .18rem rgba(118,81,143,.18) !important;
+}}
+div[data-testid="stButton"] > button:disabled {{
+    background:#F4EFF8 !important; color:#95869F !important; border-color:#E9E0EF !important;
+}}
+
+/* Entradas e área do carrinho */
+.stTextInput input, .stMultiSelect [data-baseweb="select"],
+.stSelectbox [data-baseweb="select"] {{ border-radius:11px; }}
+[data-testid="stVerticalBlockBorderWrapper"] {{ border-radius:17px; }}
+.cart-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:1rem 1.1rem; border-radius:14px; color:{COR_ESCURO}; line-height:1.5; }}
+@media(max-width:900px) {{ .product-card {{ flex-basis:215px; width:215px; }} }}
+@media(max-width:620px) {{
+    .block-container {{ padding-left:.7rem; padding-right:.7rem; padding-top:.7rem; }}
+    .mabel-header {{ padding:1.5rem .8rem; border-radius:20px; }}
+    .mabel-logo-img {{ width:min(80%,230px); }}
+    .section-title {{ font-size:1.3rem; }}
+    .product-card {{ flex-basis:185px; width:185px; border-radius:15px; }}
+    .product-image,.product-image-placeholder {{ height:165px; }}
+    .product-info {{ padding:.8rem; }}
+    .st-key-catalogo-grid [data-testid="stImage"] img {{ height:145px !important; }}
+    .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{ padding:.55rem !important; border-radius:14px !important; }}
+    .st-key-catalogo-grid [data-testid="stButton"] > button, .st-key-catalogo-grid [data-testid="stLinkButton"] > a {{ font-size:.82rem !important; padding:.45rem .35rem !important; }}
+    .st-key-catalogo-grid [data-testid="stHorizontalBlock"] {{ gap:.55rem; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -240,8 +310,14 @@ def renderizar_cartao_interativo(produto, indice):
                 unsafe_allow_html=True,
             )
 
-        st.markdown(f"**{html.escape(str(nome or 'Produto'))}**", unsafe_allow_html=True)
-        st.caption(" · ".join(categorias_do_produto(categoria)))
+        st.markdown(
+            f'<div class="catalog-product-name">{html.escape(str(nome or "Produto"))}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="catalog-category">{html.escape(" · ".join(categorias_do_produto(categoria)))}</div>',
+            unsafe_allow_html=True,
+        )
 
         if estoque > 0:
             st.markdown('<span class="availability">✓ Em estoque</span>', unsafe_allow_html=True)
@@ -505,10 +581,11 @@ else:
 
     if filtrados:
         st.caption(f"Exibindo {len(filtrados)} produto(s)")
-        colunas = st.columns(4)
-        for indice, produto in enumerate(filtrados):
-            with colunas[indice % len(colunas)]:
-                renderizar_cartao_interativo(produto, indice)
+        with st.container(key="catalogo-grid"):
+            colunas = st.columns(4, gap="medium")
+            for indice, produto in enumerate(filtrados):
+                with colunas[indice % len(colunas)]:
+                    renderizar_cartao_interativo(produto, indice)
     else:
         st.info("Nenhum produto encontrado com esses filtros.")
 

@@ -85,7 +85,23 @@ def carregar_dados():
             except psycopg2.Error:
                 conn.rollback()
                 destaques = []
-    return produtos, destaques
+
+            try:
+                cur.execute("""
+                    SELECT p.id, p.nome, p.categoria, p.preco,
+                           p.quantidade, p.foto, p.preco_promocional
+                    FROM public.catalogo_promocoes cp
+                    JOIN public.produtos p ON p.id = cp.produto_id
+                    WHERE p.quantidade > 0
+                      AND p.preco_promocional > 0
+                      AND p.preco_promocional < p.preco
+                    ORDER BY cp.ordem, p.nome
+                """)
+                promocoes = cur.fetchall()
+            except psycopg2.Error:
+                conn.rollback()
+                promocoes = []
+    return produtos, destaques, promocoes
 
 
 def imagem_html(foto, nome):
@@ -123,7 +139,7 @@ def secao_carrossel(titulo, produtos_secao):
     return f'<section><h2 class="section-title">{titulo}</h2><div class="carousel">{cards}</div></section>'
 
 try:
-    produtos, destaques = carregar_dados()
+    produtos, destaques, promocoes_selecionadas = carregar_dados()
 except Exception as erro:
     st.error("Não foi possível carregar o catálogo. Confira a conexão do banco e as tabelas necessárias.")
     st.caption(str(erro))
@@ -136,24 +152,18 @@ st.markdown(
     f'<header class="mabel-header"><div class="mabel-promo">SUA VITRINE FAVORITA</div><img class="mabel-logo-img" src="data:image/png;base64,{logo_base64}" alt="Logo Mabel Store"><p class="mabel-subtitle">Peças escolhidas com carinho para você 💜</p><p style="color:#655B6B;margin-top:.7rem">Explore nossos produtos, aproveite as ofertas e peça diretamente pelo WhatsApp.</p></header>',
     unsafe_allow_html=True,
 )
-# Produtos com preço promocional válido aparecem em um carrossel próprio.
-# A promoção é considerada válida quando o preço promocional é maior que zero
-# e menor que o preço normal.
-promocoes = [
-    p for p in produtos
-    if 0 < float(p[6] or 0) < float(p[3] or 0)
-]
-
+# O carrossel mostra apenas as promoções escolhidas na aba
+# "Personalizar catálogo" do painel administrativo.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = (
     secao_carrossel("✨ Destaques", destaques)
-    + secao_carrossel("🔥 Promoções", promocoes)
+    + secao_carrossel("🔥 Promoções", promocoes_selecionadas)
     + secao_carrossel("🎁 Kits", kits)
 )
 if html_secoes:
     st.html(html_secoes)
 else:
-    st.info("Em breve teremos destaques e kits por aqui!")
+    st.info("Em breve teremos destaques, promoções e kits por aqui!")
 
 st.markdown('<h2 class="section-title">Nosso catálogo</h2>', unsafe_allow_html=True)
 if not produtos:

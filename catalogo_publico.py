@@ -214,9 +214,41 @@ div[data-testid="stButton"] > button:disabled {{
     background:#F4EFF8 !important; color:#95869F !important; border-color:#E9E0EF !important;
 }}
 
-/* Entradas e área do carrinho */
-.stTextInput input, .stMultiSelect [data-baseweb="select"],
-.stSelectbox [data-baseweb="select"] {{ border-radius:11px; }}
+/* Campos de pesquisa e filtros em lilás claro, no lugar do fundo escuro */
+.stTextInput [data-baseweb="input"],
+.stTextArea [data-baseweb="textarea"] {{
+    background:#EDE4F3 !important; border:1px solid #D5BFE7 !important;
+    border-radius:11px !important; box-shadow:none !important;
+}}
+.stTextInput [data-baseweb="input"] input,
+.stTextArea [data-baseweb="textarea"] textarea {{
+    background:transparent !important; color:#59366F !important;
+    -webkit-text-fill-color:#59366F !important; border:0 !important;
+}}
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {{ color:#887794 !important; opacity:1 !important; }}
+.stMultiSelect [data-baseweb="select"],
+.stSelectbox [data-baseweb="select"] {{
+    background:#EDE4F3 !important; color:#59366F !important;
+    border:1px solid #D5BFE7 !important; border-radius:11px !important;
+}}
+.stMultiSelect [data-baseweb="select"] > div,
+.stSelectbox [data-baseweb="select"] > div {{
+    background:#EDE4F3 !important; color:#59366F !important;
+    border-color:#D5BFE7 !important; border-radius:10px !important;
+}}
+.stMultiSelect [data-baseweb="select"] *,
+.stSelectbox [data-baseweb="select"] * {{ color:#59366F !important; }}
+.stMultiSelect [data-baseweb="tag"] {{
+    background:#DCCBEA !important; color:#59366F !important;
+    border:1px solid #CFB5E0 !important; border-radius:8px !important;
+}}
+.stTextInput [data-baseweb="input"]:focus-within,
+.stTextArea [data-baseweb="textarea"]:focus-within,
+.stMultiSelect [data-baseweb="select"]:focus-within,
+.stSelectbox [data-baseweb="select"]:focus-within {{
+    border-color:#B99ACF !important; box-shadow:0 0 0 .16rem rgba(118,81,143,.13) !important;
+}}
 [data-testid="stVerticalBlockBorderWrapper"] {{ border-radius:17px; }}
 .cart-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:1rem 1.1rem; border-radius:14px; color:{COR_ESCURO}; line-height:1.5; }}
 @media(max-width:900px) {{ .product-section-grid {{ grid-template-columns:repeat(3,minmax(0,1fr)); }} }}
@@ -801,14 +833,14 @@ with st.container(key="cart-toolbar"):
 # Produtos marcados no painel aparecem em grades, com a quantidade disponível.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = (
-    secao_grade("Destaques ✨", destaques)
-    + secao_grade("Promoções 🔥", promocoes_selecionadas)
-    + secao_grade("Kits 🎁", kits)
+    secao_grade("✨ Destaques", destaques)
+    + secao_grade("🔥 Promoções", promocoes_selecionadas)
+    + secao_grade("🎁 Kits", kits)
 )
 if html_secoes:
     st.html(html_secoes)
 
-st.markdown('<h1 class="section-title">Nosso catálogo</h1>', unsafe_allow_html=True)
+st.markdown('<h2 class="section-title">Nosso catálogo</h2>', unsafe_allow_html=True)
 if not produtos:
     st.info("Ainda não há produtos cadastrados.")
 else:

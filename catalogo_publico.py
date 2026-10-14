@@ -44,10 +44,17 @@ st.markdown(f"""
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
 .block-container {{ max-width: 1240px; padding-top: 1.15rem; padding-bottom: 2.5rem; }}
 
-/* Tipografia leve e cabeçalho compacto da Vitrine */
-.stApp, .stApp input, .stApp textarea, .stApp button, .stApp select {{
-    font-family: "Segoe UI", "Aptos", "Helvetica Neue", sans-serif !important;
+/* Tipografia delicada e profissional, usando fontes locais para manter o site leve. */
+:root {{
+    --mabel-font-body: "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --mabel-font-display: "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }}
+.stApp, .stApp input, .stApp textarea, .stApp button, .stApp select {{
+    font-family: var(--mabel-font-body) !important;
+    font-weight: 400;
+    letter-spacing: .005em;
+}}
+.stApp {{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
 .mabel-header {{
     padding:.8rem 1rem .75rem; border:1px solid var(--mabel-border); border-radius:22px;
     background:linear-gradient(135deg,#FFFFFF 0%,#F8F3FB 100%);
@@ -60,10 +67,10 @@ st.markdown(f"""
 .mabel-logo-wrap {{ grid-column:1; display:flex; align-items:center; justify-content:flex-start; min-width:0; }}
 .mabel-logo-img {{ width:68px; height:68px; max-width:100%; object-fit:contain; display:block; margin:0; }}
 .mabel-header-title {{ grid-column:2; text-align:center; min-width:0; }}
-.mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:"Segoe UI", "Aptos", "Helvetica Neue", sans-serif; font-size:clamp(1.65rem,3.2vw,2.15rem); font-weight:550; letter-spacing:.015em; line-height:1.15; }}
+.mabel-header-title h1 {{ color:{COR_ESCURO}; margin:0; font-family:var(--mabel-font-display); font-size:clamp(1.7rem,3.2vw,2.2rem); font-weight:400; letter-spacing:.035em; line-height:1.15; }}
 .mabel-header-balance {{ grid-column:3; min-width:0; }}
-.mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.025em; line-height:1.5; }}
-.section-title {{ color:{COR_TEXTO}; font-size:1.45rem; font-weight:650; margin:1.65rem 0 .8rem; letter-spacing:-.015em; }}
+.mabel-subtitle {{ color:#786B82; margin:.25rem 0 0; text-align:center; font-size:.96rem; font-weight:300; letter-spacing:.035em; line-height:1.55; }}
+.section-title {{ color:{COR_TEXTO}; font-family:var(--mabel-font-display); font-size:1.48rem; font-weight:400; margin:1.65rem 0 .8rem; letter-spacing:.005em; }}
 
 /* Carrinho discreto: abre o conteúdo apenas quando o botão é acionado. */
 .st-key-cart-toolbar {{ margin:.45rem 0 1rem; width:100%; }}
@@ -79,10 +86,10 @@ st.markdown(f"""
 div[data-testid="stPopoverBody"] {{ max-width:min(410px, calc(100vw - 1.25rem)); }}
 div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button,
 div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-height:34px !important; padding:.35rem .55rem !important; font-size:.82rem !important; }}
-.cart-popover-heading {{ color:{COR_ESCURO}; font-weight:600; font-size:1.04rem; margin:.1rem 0 .5rem; }}
+.cart-popover-heading {{ color:{COR_ESCURO}; font-family:var(--mabel-font-display); font-weight:500; font-size:1.08rem; letter-spacing:.01em; margin:.1rem 0 .5rem; }}
 .cart-popover-intro {{ color:#786B82; font-size:.82rem; font-weight:350; line-height:1.45; margin-bottom:.65rem; }}
 .cart-item-mini {{ border:1px solid #EEE5F3; border-radius:12px; background:#FFFFFF; padding:.6rem .7rem; margin:.4rem 0 .45rem; }}
-.cart-item-mini-name {{ color:{COR_TEXTO}; font-weight:600; font-size:.88rem; line-height:1.35; overflow-wrap:anywhere; }}
+.cart-item-mini-name {{ color:{COR_TEXTO}; font-weight:550; font-size:.88rem; line-height:1.4; letter-spacing:.005em; overflow-wrap:anywhere; }}
 .cart-item-mini-detail {{ color:#776C7E; font-size:.78rem; line-height:1.4; margin-top:.2rem; overflow-wrap:anywhere; }}
 .cart-popover-total {{ background:#F5EEF9; border:1px solid #E8DDEC; padding:.7rem .8rem; border-radius:12px; color:{COR_ESCURO}; font-size:.92rem; line-height:1.45; }}
 
@@ -97,12 +104,12 @@ div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-heig
 .product-image {{ width:100%; aspect-ratio:1 / 1; height:auto; object-fit:contain; background:#fff; border:1px solid #F0EAF4; border-radius:13px; display:block; padding:9px; box-sizing:border-box; }}
 .product-image-placeholder {{ width:100%; aspect-ratio:1 / 1; height:auto; display:flex; align-items:center; justify-content:center; background:#fff; border:1px solid #F0EAF4; border-radius:13px; color:{COR_PRINCIPAL}; font-size:2.6rem; box-sizing:border-box; }}
 .product-info {{ padding:1rem; display:flex; flex-direction:column; flex:1; }}
-.product-name {{ color:{COR_TEXTO}; font-weight:750; font-size:1rem; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; }}
-.product-category {{ display:inline-block; width:fit-content; max-width:100%; margin:.55rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.24rem .62rem; font-size:.74rem; overflow-wrap:anywhere; }}
-.product-price {{ color:{COR_ESCURO}; font-weight:800; font-size:1.18rem; margin:.35rem 0 .7rem; }}
+.product-name {{ color:{COR_TEXTO}; font-weight:600; font-size:1rem; line-height:1.4; letter-spacing:.002em; min-height:2.7em; overflow-wrap:anywhere; }}
+.product-category {{ display:inline-block; width:fit-content; max-width:100%; margin:.55rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.24rem .62rem; font-size:.74rem; font-weight:400; letter-spacing:.01em; overflow-wrap:anywhere; }}
+.product-price {{ color:{COR_ESCURO}; font-weight:700; font-size:1.16rem; letter-spacing:.005em; margin:.35rem 0 .7rem; }}
 .old-price {{ color:#827787; text-decoration:line-through; font-size:.86rem; margin-top:.35rem; }}
-.stock-quantity {{ display:inline-block; width:fit-content; max-width:100%; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; white-space:normal; overflow-wrap:anywhere; }}
-.buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
+.stock-quantity {{ display:inline-block; width:fit-content; max-width:100%; color:#766A7D; font-size:.78rem; line-height:1.4; font-weight:450; margin:.05rem 0 .5rem; white-space:normal; overflow-wrap:anywhere; }}
+.buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:600; letter-spacing:.005em; transition:background .18s ease,transform .18s ease; }}
 .buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
 .description-toggle {{ width:100%; max-width:100%; min-width:0; margin:.1rem 0 .65rem; box-sizing:border-box; }}
 .description-toggle summary {{
@@ -152,9 +159,9 @@ div[data-testid="stPopoverBody"] div[data-testid="stLinkButton"] > a {{ min-heig
     overflow-wrap:anywhere;
 }}
 .st-key-catalogo-grid .product-image-placeholder {{ aspect-ratio:1 / 1; width:100%; height:auto; background:#FFFFFF; border:1px solid #F0EAF4; border-radius:13px; box-sizing:border-box; }}
-.st-key-catalogo-grid .catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:750; line-height:1.35; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
-.st-key-catalogo-grid .catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; line-height:1.3; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
-.st-key-catalogo-grid .catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-product-name {{ color:{COR_TEXTO}; font-size:1rem; font-weight:600; letter-spacing:.002em; line-height:1.4; min-height:2.7em; overflow-wrap:anywhere; margin:.25rem 0 .4rem; }}
+.st-key-catalogo-grid .catalog-category {{ display:inline-block; width:fit-content; max-width:100%; color:{COR_ESCURO}; background:{COR_CLARA}; font-size:.74rem; font-weight:400; letter-spacing:.01em; line-height:1.35; min-height:0; margin:.2rem 0 .5rem; padding:.24rem .62rem; border-radius:30px; overflow-wrap:anywhere; }}
+.st-key-catalogo-grid .catalog-stock-quantity {{ display:block; color:#766A7D; font-size:.78rem; line-height:1.4; font-weight:450; margin:.05rem 0 .5rem; overflow-wrap:anywhere; }}
 .st-key-catalogo-grid [data-testid="stButton"],
 .st-key-catalogo-grid [data-testid="stLinkButton"] {{
     width:100%; max-width:100%; min-width:0; padding:0 .9rem; box-sizing:border-box;
@@ -169,7 +176,7 @@ div[data-testid="stButton"] > button,
 div[data-testid="stLinkButton"] > a {{
     border-radius:11px !important; border:1px solid #D5BFE7 !important;
     background:#E3D3F0 !important; color:{COR_ESCURO} !important;
-    font-weight:700 !important; box-shadow:none !important;
+    font-weight:600 !important; letter-spacing:.005em; box-shadow:none !important;
     transition:background .18s ease,border-color .18s ease,transform .18s ease;
 }}
 div[data-testid="stButton"] > button:hover,
@@ -201,7 +208,7 @@ div[data-testid="stButton"] > button:disabled {{
     .mabel-header {{ padding:.65rem .65rem .7rem; border-radius:17px; }}
     .mabel-header-main {{ grid-template-columns:54px minmax(0,1fr) 54px; min-height:54px; gap:.2rem; }}
     .mabel-logo-img {{ width:50px; height:50px; }}
-    .mabel-header-title h1 {{ font-size:1.55rem; }}
+    .mabel-header-title h1 {{ font-size:1.58rem; letter-spacing:.025em; }}
     .mabel-subtitle {{ font-size:.78rem; line-height:1.4; margin-top:.3rem; letter-spacing:.01em; }}
     .st-key-cart-toolbar {{ margin:.35rem 0 .75rem; }}
     .st-key-cart-toolbar div[data-testid="stPopover"] > button {{ padding:.36rem .68rem !important; font-size:.78rem !important; }}

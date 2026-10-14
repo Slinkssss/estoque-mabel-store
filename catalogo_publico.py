@@ -2,7 +2,10 @@ import base64
 import html
 import os
 import re
+from io import BytesIO
 from urllib.parse import quote
+
+from PIL import Image, ImageOps
 
 import psycopg2
 import streamlit as st
@@ -68,8 +71,8 @@ st.markdown(f"""
 .product-category {{ display:inline-block; width:fit-content; max-width:100%; margin:.55rem 0; background:{COR_CLARA}; color:{COR_ESCURO}; border-radius:30px; padding:.24rem .62rem; font-size:.74rem; overflow-wrap:anywhere; }}
 .product-price {{ color:{COR_ESCURO}; font-weight:800; font-size:1.18rem; margin:.35rem 0 .7rem; }}
 .old-price {{ color:#827787; text-decoration:line-through; font-size:.86rem; margin-top:.35rem; }}
-.availability {{ display:inline-block; width:fit-content; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.25rem .62rem; font-size:.72rem; font-weight:750; margin:.1rem 0 .45rem; }}
-.out-of-stock {{ display:inline-block; width:fit-content; background:#FCE8E8; color:#9B2525; border-radius:99px; padding:.25rem .62rem; font-size:.72rem; font-weight:750; margin:.1rem 0 .45rem; }}
+.availability {{ display:inline-block; width:fit-content; max-width:100%; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.25rem .55rem; font-size:.72rem; line-height:1.3; font-weight:750; margin:.1rem 0 .45rem; white-space:normal; overflow-wrap:anywhere; }}
+.out-of-stock {{ display:inline-block; width:fit-content; max-width:100%; background:#FCE8E8; color:#9B2525; border-radius:99px; padding:.25rem .55rem; font-size:.72rem; line-height:1.3; font-weight:750; margin:.1rem 0 .45rem; white-space:normal; overflow-wrap:anywhere; }}
 .buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
 .buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
 
@@ -192,6 +195,13 @@ div[data-testid="stButton"] > button:disabled {{
     .product-info {{ padding:.6rem; min-width:0; }}
     .product-name {{ font-size:.88rem; min-height:2.6em; overflow-wrap:anywhere; }}
     .product-category {{ font-size:.68rem; padding:.22rem .42rem; max-width:100%; }}
+    .availability,.out-of-stock {{ font-size:.66rem; padding:.22rem .4rem; }}
+    /* Menos efeitos/retrabalho no celular e imagens sempre contidas no cartão. */
+    .product-card,.st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
+        transform:none !important; transition:none !important;
+    }}
+    .product-image,.product-image-placeholder {{ max-width:100%; }}
+    .st-key-catalogo-grid [data-testid="stImage"] img {{ content-visibility:auto; }}
     .product-price {{ font-size:1rem; overflow-wrap:anywhere; }}
     .buy-link {{ padding:.55rem .3rem; font-size:.72rem; line-height:1.2; overflow-wrap:anywhere; }}
 }}
@@ -229,8 +239,9 @@ def abrir_conexao():
     )
 
 
+@st.cache_data(ttl=30, max_entries=5, show_spinner=False)
 def carregar_dados():
-    """Carrega todos os produtos, inclusive os que estão sem estoque."""
+    """Carrega produtos incluindo os sem estoque; cache curto reduz acessos ao banco."""
     conn = abrir_conexao()
     try:
         with conn:
@@ -271,9 +282,60 @@ def carregar_dados():
                 except psycopg2.Error:
                     conn.rollback()
                     promocoes = []
-        return produtos, destaques, promocoes
+        # Normaliza BLOBs para bytes. O cache evita repetir a consulta pesada a cada
+        # clique do carrinho; os saldos são atualizados automaticamente em até 30 s.
+        def normalizar_fotos(linhas):
+            return [
+                tuple(bytes(v) if isinstance(v, memoryview) else v for v in linha)
+                for linha in linhas
+            ]
+        return (
+            normalizar_fotos(produtos),
+            normalizar_fotos(destaques),
+            normalizar_fotos(promocoes),
+        )
     finally:
         conn.close()
+
+
+@st.cache_data(ttl=3600, max_entries=500, show_spinner=False)
+def otimizar_imagem_catalogo(foto_bytes, max_lado=640, qualidade=74):
+    """Gera miniaturas WebP leves para carregar mais rápido em telas móveis."""
+    if not foto_bytes:
+        return ("image/jpeg", b"")
+    foto_bytes = bytes(foto_bytes)
+    try:
+        with Image.open(BytesIO(foto_bytes)) as original:
+            imagem = ImageOps.exif_transpose(original)
+            imagem.thumbnail((max_lado, max_lado), Image.Resampling.LANCZOS)
+            if "A" in imagem.getbands():
+                imagem = imagem.convert("RGBA")
+            else:
+                imagem = imagem.convert("RGB")
+            buffer = BytesIO()
+            imagem.save(buffer, format="WEBP", quality=qualidade, method=4)
+            return ("image/webp", buffer.getvalue())
+    except Exception:
+        # Se a imagem não puder ser convertida, preserva o arquivo e seu formato.
+        if foto_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            tipo = "image/png"
+        elif foto_bytes[:3] == b"GIF":
+            tipo = "image/gif"
+        elif foto_bytes[:4] == b"RIFF" and foto_bytes[8:12] == b"WEBP":
+            tipo = "image/webp"
+        else:
+            tipo = "image/jpeg"
+        return (tipo, foto_bytes)
+
+
+def estoque_label(quantidade):
+    """Texto do estoque real disponível, singular ou plural."""
+    estoque = max(0, int(quantidade or 0))
+    if estoque == 0:
+        return '<div class="out-of-stock">● Fora de estoque</div>'
+    if estoque == 1:
+        return '<div class="availability">✓ 1 unidade disponível</div>'
+    return f'<div class="availability">✓ {estoque} unidades disponíveis</div>'
 
 
 def categorias_do_produto(valor):
@@ -284,12 +346,11 @@ def categorias_do_produto(valor):
 
 def imagem_html(foto, nome):
     if foto:
-        if isinstance(foto, memoryview):
-            foto = bytes(foto)
-        codificada = base64.b64encode(foto).decode("ascii")
+        tipo, miniatura = otimizar_imagem_catalogo(bytes(foto))
+        codificada = base64.b64encode(miniatura).decode("ascii")
         return (
-            '<img class="product-image" '
-            f'src="data:image/jpeg;base64,{codificada}" '
+            '<img class="product-image" loading="lazy" decoding="async" '
+            f'src="data:{tipo};base64,{codificada}" '
             f'alt="{html.escape(str(nome))}">'
         )
     return '<div class="product-image-placeholder">🛍️</div>'
@@ -302,7 +363,7 @@ def link_whatsapp(mensagem):
 
 
 def card_html(produto):
-    """Cartão HTML usado nos carrosséis; mantém o contato direto por WhatsApp."""
+    """Cartão HTML usado nas grades; mantém o contato direto por WhatsApp."""
     _pid, nome, categoria, preco, quantidade, foto, preco_promocional = produto
     preco_normal = float(preco or 0)
     promocional = float(preco_promocional or 0)
@@ -311,11 +372,11 @@ def card_html(produto):
     nome_seguro = html.escape(str(nome or "Produto"))
     categoria_segura = html.escape(" · ".join(categorias_do_produto(categoria)))
 
-    if int(quantidade or 0) > 0:
-        status_html = '<div class="availability">✓ Disponível</div>'
+    estoque = max(0, int(quantidade or 0))
+    status_html = estoque_label(estoque)
+    if estoque > 0:
         rotulo_botao = "Pedir pelo WhatsApp"
     else:
-        status_html = '<div class="out-of-stock">● Fora de estoque</div>'
         rotulo_botao = "Consultar reposição"
 
     mensagem = (
@@ -368,9 +429,8 @@ def renderizar_cartao_interativo(produto, indice):
 
     with st.container(border=True):
         if foto:
-            if isinstance(foto, memoryview):
-                foto = bytes(foto)
-            st.image(foto, use_container_width=True)
+            _tipo_imagem, foto_otimizada = otimizar_imagem_catalogo(bytes(foto))
+            st.image(foto_otimizada, use_container_width=True)
         else:
             st.markdown(
                 f'<div class="product-image-placeholder">🛍️</div>',
@@ -386,10 +446,7 @@ def renderizar_cartao_interativo(produto, indice):
             unsafe_allow_html=True,
         )
 
-        if estoque > 0:
-            st.markdown('<span class="availability">✓ Em estoque</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('<span class="out-of-stock">● Fora de estoque</span>', unsafe_allow_html=True)
+        st.markdown(estoque_label(estoque), unsafe_allow_html=True)
 
         if em_promocao:
             st.markdown(

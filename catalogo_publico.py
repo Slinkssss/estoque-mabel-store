@@ -74,10 +74,23 @@ st.markdown(f"""
 .stock-quantity {{ display:inline-block; width:fit-content; max-width:100%; color:#766A7D; font-size:.78rem; line-height:1.35; font-weight:600; margin:.05rem 0 .5rem; white-space:normal; overflow-wrap:anywhere; }}
 .buy-link {{ display:block; margin-top:auto; text-align:center; background:#E3D3F0; color:{COR_ESCURO} !important; text-decoration:none !important; border:1px solid #D5BFE7; border-radius:11px; padding:.72rem .6rem; font-weight:750; transition:background .18s ease,transform .18s ease; }}
 .buy-link:hover {{ background:#D7C0E8; transform:translateY(-1px); }}
+.description-toggle {{ width:100%; max-width:100%; min-width:0; margin:.1rem 0 .65rem; box-sizing:border-box; }}
+.description-toggle summary {{
+    display:block; width:100%; box-sizing:border-box; list-style:none; cursor:pointer;
+    text-align:center; background:#E3D3F0; color:{COR_ESCURO}; border:1px solid #D5BFE7;
+    border-radius:11px; padding:.62rem .55rem; font-size:.88rem; line-height:1.3; font-weight:750;
+    overflow-wrap:anywhere; transition:background .18s ease;
+}}
+.description-toggle summary::-webkit-details-marker {{ display:none; }}
+.description-toggle summary::after {{ content:"＋"; margin-left:.45rem; font-weight:800; }}
+.description-toggle[open] summary::after {{ content:"−"; }}
+.description-toggle summary:hover {{ background:#D7C0E8; }}
+.description-content {{ margin-top:.45rem; padding:.7rem; border:1px solid #E8DDEC; border-radius:10px;
+    background:#FCFAFD; color:#4F4557; font-size:.88rem; line-height:1.45; white-space:pre-line;
+    overflow-wrap:anywhere; box-sizing:border-box; }}
 
 /* Cartões do catálogo principal: mesmo desenho dos cartões de Destaques.
-   A foto ocupa um quadrado branco no topo; nome, categoria, quantidade,
-   preço e ações ficam alinhados na área inferior do mesmo cartão. */
+   A foto ocupa um quadrado branco no topo; informações e ações ficam na área inferior. */
 .st-key-catalogo-grid [data-testid="stVerticalBlockBorderWrapper"] {{
     min-height:100%; width:100%; min-width:0; box-sizing:border-box;
     border:1px solid var(--mabel-border) !important;
@@ -248,6 +261,8 @@ div[data-testid="stButton"] > button:disabled {{
     .st-key-catalogo-grid .product-image-placeholder {{ width:100%; height:auto; aspect-ratio:1 / 1; border-radius:11px; }}
     .product-price {{ font-size:1rem; overflow-wrap:anywhere; }}
     .buy-link {{ padding:.55rem .3rem; font-size:.72rem; line-height:1.2; overflow-wrap:anywhere; }}
+    .description-toggle summary {{ padding:.5rem .3rem; font-size:.73rem; line-height:1.2; }}
+    .description-content {{ padding:.55rem; font-size:.74rem; line-height:1.4; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -292,17 +307,19 @@ def carregar_dados():
             with conn.cursor() as cur:
                 # Sem filtro de quantidade: todos os itens permanecem visíveis.
                 cur.execute("""
-                    SELECT id, nome, categoria, preco,
-                           quantidade, foto, preco_promocional
-                    FROM public.produtos
-                    ORDER BY nome
+                    SELECT p.id, p.nome, p.categoria, p.preco,
+                           p.quantidade, p.foto, p.preco_promocional,
+                           COALESCE(to_jsonb(p)->>'descricao', '') AS descricao
+                    FROM public.produtos p
+                    ORDER BY p.nome
                 """)
                 produtos = cur.fetchall()
 
                 try:
                     cur.execute("""
                         SELECT p.id, p.nome, p.categoria, p.preco,
-                               p.quantidade, p.foto, p.preco_promocional
+                               p.quantidade, p.foto, p.preco_promocional,
+                               COALESCE(to_jsonb(p)->>'descricao', '') AS descricao
                         FROM public.catalogo_destaques d
                         JOIN public.produtos p ON p.id = d.produto_id
                         ORDER BY d.ordem, p.nome
@@ -315,7 +332,8 @@ def carregar_dados():
                 try:
                     cur.execute("""
                         SELECT p.id, p.nome, p.categoria, p.preco,
-                               p.quantidade, p.foto, p.preco_promocional
+                               p.quantidade, p.foto, p.preco_promocional,
+                               COALESCE(to_jsonb(p)->>'descricao', '') AS descricao
                         FROM public.catalogo_promocoes cp
                         JOIN public.produtos p ON p.id = cp.produto_id
                         WHERE p.preco_promocional > 0
@@ -384,6 +402,20 @@ def categorias_do_produto(valor):
     return limpas or ["Sem categoria"]
 
 
+def descricao_html(descricao):
+    """Cria o botão expansível apenas quando há uma descrição preenchida."""
+    texto = str(descricao or "").strip()
+    if not texto:
+        return ""
+    texto_seguro = html.escape(texto)
+    return (
+        '<details class="description-toggle">'
+        '<summary>Ver descrição</summary>'
+        f'<div class="description-content">{texto_seguro}</div>'
+        '</details>'
+    )
+
+
 def imagem_html(foto, nome):
     if foto:
         tipo, miniatura = otimizar_imagem_catalogo(bytes(foto))
@@ -404,7 +436,7 @@ def link_whatsapp(mensagem):
 
 def card_html(produto):
     """Cartão HTML usado nas grades; mantém o contato direto por WhatsApp."""
-    _pid, nome, categoria, preco, quantidade, foto, preco_promocional = produto
+    _pid, nome, categoria, preco, quantidade, foto, preco_promocional, descricao = produto
     preco_normal = float(preco or 0)
     promocional = float(preco_promocional or 0)
     em_promocao = 0 < promocional < preco_normal
@@ -440,7 +472,7 @@ def card_html(produto):
         f'<article class="product-card">{imagem_html(foto, nome)}'
         f'<div class="product-info"><div class="product-name">{nome_seguro}</div>'
         f'<span class="product-category">{categoria_segura}</span>'
-        f'{quantidade_html}{preco_html}'
+        f'{quantidade_html}{preco_html}{descricao_html(descricao)}'
         f'<a class="buy-link" href="{link}" target="_blank" rel="noopener">'
         f'{rotulo_botao}</a></div></article>'
     )
@@ -458,7 +490,7 @@ def secao_grade(titulo, produtos_secao):
 
 
 def renderizar_cartao_interativo(produto, indice):
-    pid, nome, categoria, preco, quantidade, foto, preco_promocional = produto
+    pid, nome, categoria, preco, quantidade, foto, preco_promocional, descricao = produto
     pid_chave = str(pid)
     estoque = max(0, int(quantidade or 0))
     preco_normal = float(preco or 0)
@@ -502,6 +534,9 @@ def renderizar_cartao_interativo(produto, indice):
                 f'<div class="product-price">{moeda(preco_atual)}</div>',
                 unsafe_allow_html=True,
             )
+
+        if str(descricao or "").strip():
+            st.markdown(descricao_html(descricao), unsafe_allow_html=True)
 
         if estoque > 0:
             if st.button(
@@ -574,7 +609,7 @@ def mostrar_carrinho(produtos):
             if not produto:
                 continue
 
-            pid, nome, categoria, preco, quantidade, foto, preco_promocional = produto
+            pid, nome, categoria, preco, quantidade, foto, preco_promocional, descricao = produto
             qtd = int(carrinho.get(pid_chave, 1))
             estoque = max(0, int(quantidade or 0))
             preco_atual = preco_efetivo(produto)

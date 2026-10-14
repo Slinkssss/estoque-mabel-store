@@ -22,7 +22,7 @@ st.markdown(f"""
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
 .block-container {{ max-width: 1240px; padding-top: 1.1rem; padding-bottom: 2rem; }}
 .mabel-header {{ text-align:center; padding: 2.2rem 1.2rem 2rem; border:1px solid #E8DDEC; border-radius:24px; background:linear-gradient(135deg,#FFFFFF 0%,#F5EEF9 100%); box-shadow:0 12px 35px rgba(89,54,111,.08); }}
-.mabel-logo {{ color:{COR_ESCURO}; font-family: Georgia,serif; font-size:2.8rem; font-weight:800; letter-spacing:.02em; margin:0; }}
+.mabel-logo-img {{ width:min(100%, 300px); max-height:300px; object-fit:contain; display:block; margin:.1rem auto .5rem; }}
 .mabel-subtitle {{ color:{COR_PRINCIPAL}; margin-top:.45rem; font-size:1.08rem; }}
 .mabel-promo {{ display:inline-block; background:#59366F; color:white; border-radius:99px; padding:.35rem .85rem; font-size:.78rem; font-weight:700; letter-spacing:.06em; margin-bottom:.75rem; }}
 .availability {{ display:inline-block; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.22rem .55rem; font-size:.72rem; font-weight:700; margin:.1rem 0 .45rem; }}
@@ -43,7 +43,7 @@ st.markdown(f"""
 .catalog-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; }}
 .catalog-grid .product-card {{ width:auto; min-width:0; }}
 @media(max-width:900px) {{ .catalog-grid {{ grid-template-columns:repeat(3,minmax(0,1fr)); }} }}
-@media(max-width:620px) {{ .block-container {{ padding-left:.7rem; padding-right:.7rem; }} .catalog-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem; }} .catalog-grid .product-image,.catalog-grid .product-image-placeholder {{ height:145px; }} .catalog-grid .product-info {{ padding:.65rem; }} .product-card {{ flex-basis:165px; width:165px; }} .product-image,.product-image-placeholder {{ height:155px; }} .mabel-logo {{ font-size:1.9rem; }} }}
+@media(max-width:620px) {{ .block-container {{ padding-left:.7rem; padding-right:.7rem; }} .catalog-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem; }} .catalog-grid .product-image,.catalog-grid .product-image-placeholder {{ height:145px; }} .catalog-grid .product-info {{ padding:.65rem; }} .product-card {{ flex-basis:165px; width:165px; }} .product-image,.product-image-placeholder {{ height:155px; }} .mabel-logo-img {{ width:min(80%, 230px); }} }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -103,7 +103,7 @@ def card_html(p):
     em_promocao = 0 < promo < preco_normal
     preco_atual = promo if em_promocao else preco_normal
     nome_seguro = html.escape(str(nome or "Produto"))
-    categoria_segura = html.escape(str(categoria or "Mabel Store"))
+    categoria_segura = html.escape(" · ".join(re.split(r"\s*[|,;]\s*", str(categoria or "Sem categoria"))))
     mensagem = quote(f"Olá! Tenho interesse no produto: {nome or 'Produto'}. Preço: {moeda(preco_atual)}.")
     link = f"https://wa.me/{WHATSAPP_COMERCIAL}?text={mensagem}"
     return (f'<article class="product-card">{imagem_html(foto, nome)}'
@@ -128,7 +128,13 @@ except Exception as erro:
     st.caption(str(erro))
     st.stop()
 
-st.markdown('<header class="mabel-header"><div class="mabel-promo">SUA VITRINE FAVORITA</div><h1 class="mabel-logo">Mabel Store</h1><p class="mabel-subtitle">Peças escolhidas com carinho para você 💜</p><p style="color:#655B6B;margin-top:.7rem">Explore nossos produtos, aproveite as ofertas e peça diretamente pelo WhatsApp.</p></header>', unsafe_allow_html=True)
+logo_path = os.path.join(os.path.dirname(__file__), "logo_store.png")
+with open(logo_path, "rb") as arquivo_logo:
+    logo_base64 = base64.b64encode(arquivo_logo.read()).decode("ascii")
+st.markdown(
+    f'<header class="mabel-header"><div class="mabel-promo">SUA VITRINE FAVORITA</div><img class="mabel-logo-img" src="data:image/png;base64,{logo_base64}" alt="Logo Mabel Store"><p class="mabel-subtitle">Peças escolhidas com carinho para você 💜</p><p style="color:#655B6B;margin-top:.7rem">Explore nossos produtos, aproveite as ofertas e peça diretamente pelo WhatsApp.</p></header>',
+    unsafe_allow_html=True,
+)
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = secao_carrossel("✨ Destaques", destaques) + secao_carrossel("🎁 Kits", kits)
 if html_secoes:
@@ -142,10 +148,25 @@ if not produtos:
 else:
     c1, c2, c3 = st.columns([2, 1, 1])
     busca = c1.text_input("Pesquisar produto", placeholder="Digite o nome do produto...").strip().casefold()
-    categorias = sorted({str(p[2] or "Sem categoria") for p in produtos}, key=str.casefold)
-    categoria = c2.selectbox("Categoria", ["Todas", *categorias])
+    def categorias_do_produto(valor):
+        partes = re.split(r"\s*[|,;]\s*", str(valor or "Sem categoria"))
+        limpas = [parte.strip() for parte in partes if parte.strip()]
+        return limpas or ["Sem categoria"]
+
+    categorias = sorted({categoria_item for p in produtos for categoria_item in categorias_do_produto(p[2])}, key=str.casefold)
+    categorias_selecionadas = c2.multiselect(
+        "Categorias",
+        options=categorias,
+        default=[],
+        placeholder="Todas as categorias",
+        help="Selecione uma ou mais categorias. O catálogo mostrará produtos que pertençam a pelo menos uma delas.",
+    )
     ordem = c3.selectbox("Ordenar por", ["Nome", "Menor preço", "Maior preço"])
-    filtrados = [p for p in produtos if (not busca or busca in str(p[1] or "").casefold() or busca in str(p[2] or "").casefold()) and (categoria == "Todas" or str(p[2] or "Sem categoria") == categoria)]
+    filtrados = [
+        p for p in produtos
+        if (not busca or busca in str(p[1] or "").casefold() or busca in str(p[2] or "").casefold())
+        and (not categorias_selecionadas or bool(set(categorias_do_produto(p[2])) & set(categorias_selecionadas)))
+    ]
     if ordem == "Menor preço":
         filtrados.sort(key=lambda p: float(p[3] or 0))
     elif ordem == "Maior preço":
@@ -158,4 +179,4 @@ else:
     else:
         st.info("Nenhum produto encontrado com esses filtros.")
 
-st.markdown(f'<hr><p style="text-align:center;color:{COR_PRINCIPAL};padding:1rem 0">Mabel Store · Feito com carinho 💜</p>', unsafe_allow_html=True)
+st.markdown(f'<hr><div style="text-align:center;padding:1rem 0"><img src="data:image/png;base64,{logo_base64}" alt="Logo Mabel Store" style="width:100px;max-width:30%;height:auto"><p style="color:{COR_PRINCIPAL};margin:.3rem 0">Feito com carinho 💜</p></div>', unsafe_allow_html=True)

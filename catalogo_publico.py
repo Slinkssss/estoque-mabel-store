@@ -771,16 +771,69 @@ else:
         filtrados.sort(key=lambda p: str(p[1] or "").casefold())
 
     if filtrados:
-        st.caption(f"Exibindo {len(filtrados)} produto(s)")
+        # Paginação do catálogo principal: 30 produtos por página.
+        # A página volta à primeira quando a busca, as categorias ou a ordenação mudam.
+        produtos_por_pagina = 30
+        assinatura_filtros = (
+            busca,
+            tuple(sorted(categorias_selecionadas, key=str.casefold)),
+            ordem,
+        )
+        if st.session_state.get("catalogo_assinatura_filtros") != assinatura_filtros:
+            st.session_state["catalogo_assinatura_filtros"] = assinatura_filtros
+            st.session_state["catalogo_pagina"] = 1
+
+        total_produtos = len(filtrados)
+        total_paginas = max(1, (total_produtos + produtos_por_pagina - 1) // produtos_por_pagina)
+        pagina_atual = int(st.session_state.get("catalogo_pagina", 1))
+        pagina_atual = max(1, min(pagina_atual, total_paginas))
+        st.session_state["catalogo_pagina"] = pagina_atual
+
+        inicio_pagina = (pagina_atual - 1) * produtos_por_pagina
+        fim_pagina = min(inicio_pagina + produtos_por_pagina, total_produtos)
+        produtos_pagina = filtrados[inicio_pagina:fim_pagina]
+
+        def controles_paginacao(localizacao):
+            anterior, indicador, proxima = st.columns([1, 1.5, 1], gap="small")
+            with anterior:
+                if st.button(
+                    "← Anterior",
+                    key=f"catalogo_paginacao_{localizacao}_anterior",
+                    disabled=pagina_atual <= 1,
+                    use_container_width=True,
+                ):
+                    st.session_state["catalogo_pagina"] = pagina_atual - 1
+                    st.rerun()
+            with indicador:
+                st.markdown(
+                    f'<div style="text-align:center;padding:.45rem 0;color:{COR_ESCURO};font-weight:700">'
+                    f'Página {pagina_atual} de {total_paginas}</div>',
+                    unsafe_allow_html=True,
+                )
+            with proxima:
+                if st.button(
+                    "Próxima →",
+                    key=f"catalogo_paginacao_{localizacao}_proxima",
+                    disabled=pagina_atual >= total_paginas,
+                    use_container_width=True,
+                ):
+                    st.session_state["catalogo_pagina"] = pagina_atual + 1
+                    st.rerun()
+
+        st.caption(f"Exibindo produtos {inicio_pagina + 1}–{fim_pagina} de {total_produtos}")
+        if total_paginas > 1:
+            controles_paginacao("topo")
         with st.container(key="catalogo-grid"):
-            # Cada grupo de quatro cartões forma uma linha no desktop. No celular,
-            # o CSS reorganiza cada grupo em duas linhas de dois, sem trocar a ordem.
-            for inicio in range(0, len(filtrados), 4):
-                linha_produtos = filtrados[inicio:inicio + 4]
+            # Cada grupo forma uma linha no desktop; no celular o CSS mostra dois cartões por linha.
+            for inicio in range(0, len(produtos_pagina), 4):
+                linha_produtos = produtos_pagina[inicio:inicio + 4]
                 colunas = st.columns(4, gap="medium")
                 for posicao, produto in enumerate(linha_produtos):
+                    indice_produto = inicio_pagina + inicio + posicao
                     with colunas[posicao]:
-                        renderizar_cartao_interativo(produto, inicio + posicao)
+                        renderizar_cartao_interativo(produto, indice_produto)
+        if total_paginas > 1:
+            controles_paginacao("base")
     else:
         st.info("Nenhum produto encontrado com esses filtros.")
 

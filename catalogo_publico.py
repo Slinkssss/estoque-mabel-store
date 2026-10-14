@@ -808,7 +808,7 @@ html_secoes = (
 if html_secoes:
     st.html(html_secoes)
 
-st.markdown('<h2 class="section-title">Nosso catálogo</h2>', unsafe_allow_html=True)
+st.markdown('<h1 class="section-title">Nosso catálogo</h1>', unsafe_allow_html=True)
 if not produtos:
     st.info("Ainda não há produtos cadastrados.")
 else:

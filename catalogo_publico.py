@@ -801,9 +801,9 @@ with st.container(key="cart-toolbar"):
 # Produtos marcados no painel aparecem em grades, com a quantidade disponível.
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = (
-    secao_grade("✨ Destaques", destaques)
-    + secao_grade("🔥 Promoções", promocoes_selecionadas)
-    + secao_grade("🎁 Kits", kits)
+    secao_grade("Destaques ✨", destaques)
+    + secao_grade("Promoções 🔥", promocoes_selecionadas)
+    + secao_grade("Kits 🎁", kits)
 )
 if html_secoes:
     st.html(html_secoes)

@@ -20,10 +20,13 @@ COR_TEXTO = "#30283A"
 st.markdown(f"""
 <style>
 .stApp {{ background: {COR_FUNDO}; color: {COR_TEXTO}; }}
-.block-container {{ max-width: 1200px; padding-top: 1.8rem; }}
-.mabel-header {{ text-align:center; padding: 1.4rem 1rem 1.8rem; }}
-.mabel-logo {{ color:{COR_ESCURO}; font-size:2.25rem; font-weight:800; letter-spacing:.02em; margin:0; }}
-.mabel-subtitle {{ color:{COR_PRINCIPAL}; margin-top:.35rem; }}
+.block-container {{ max-width: 1240px; padding-top: 1.1rem; padding-bottom: 2rem; }}
+.mabel-header {{ text-align:center; padding: 2.2rem 1.2rem 2rem; border:1px solid #E8DDEC; border-radius:24px; background:linear-gradient(135deg,#FFFFFF 0%,#F5EEF9 100%); box-shadow:0 12px 35px rgba(89,54,111,.08); }}
+.mabel-logo {{ color:{COR_ESCURO}; font-family: Georgia,serif; font-size:2.8rem; font-weight:800; letter-spacing:.02em; margin:0; }}
+.mabel-subtitle {{ color:{COR_PRINCIPAL}; margin-top:.45rem; font-size:1.08rem; }}
+.mabel-promo {{ display:inline-block; background:#59366F; color:white; border-radius:99px; padding:.35rem .85rem; font-size:.78rem; font-weight:700; letter-spacing:.06em; margin-bottom:.75rem; }}
+.availability {{ display:inline-block; background:#E7F5EC; color:#246B45; border-radius:99px; padding:.22rem .55rem; font-size:.72rem; font-weight:700; margin:.1rem 0 .45rem; }}
+.old-price {{ color:#827787; text-decoration:line-through; font-size:.88rem; margin-top:.35rem; }}
 .section-title {{ color:{COR_TEXTO}; font-size:1.55rem; font-weight:750; margin:1.8rem 0 .85rem; }}
 .carousel {{ display:flex; gap:1rem; overflow-x:auto; padding:.2rem .1rem 1rem; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }}
 .carousel::-webkit-scrollbar {{ height:7px; }}
@@ -60,7 +63,7 @@ def carregar_dados():
     with abrir_conexao() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, nome, categoria, preco, quantidade, foto
+                SELECT id, nome, categoria, preco, quantidade, foto, preco_promocional
                 FROM public.produtos
                 WHERE quantidade > 0
                 ORDER BY nome
@@ -71,7 +74,7 @@ def carregar_dados():
             # o restante do catálogo continua disponível e exibimos uma orientação.
             try:
                 cur.execute("""
-                    SELECT p.id, p.nome, p.categoria, p.preco, p.quantidade, p.foto
+                    SELECT p.id, p.nome, p.categoria, p.preco, p.quantidade, p.foto, p.preco_promocional
                     FROM public.catalogo_destaques d
                     JOIN public.produtos p ON p.id = d.produto_id
                     WHERE p.quantidade > 0
@@ -94,15 +97,20 @@ def imagem_html(foto, nome):
 
 
 def card_html(p):
-    _pid, nome, categoria, preco, _quantidade, foto = p
+    _pid, nome, categoria, preco, quantidade, foto, preco_promocional = p
+    preco_normal = float(preco or 0)
+    promo = float(preco_promocional or 0)
+    em_promocao = 0 < promo < preco_normal
+    preco_atual = promo if em_promocao else preco_normal
     nome_seguro = html.escape(str(nome or "Produto"))
     categoria_segura = html.escape(str(categoria or "Mabel Store"))
-    mensagem = quote(f"Olá! Tenho interesse no produto: {nome or 'Produto'}.")
+    mensagem = quote(f"Olá! Tenho interesse no produto: {nome or 'Produto'}. Preço: {moeda(preco_atual)}.")
     link = f"https://wa.me/{WHATSAPP_COMERCIAL}?text={mensagem}"
     return (f'<article class="product-card">{imagem_html(foto, nome)}'
             f'<div class="product-info"><div class="product-name">{nome_seguro}</div>'
             f'<span class="product-category">{categoria_segura}</span>'
-            f'<div class="product-price">{moeda(preco)}</div>'
+            f'<div class="availability">✓ Disponível</div>'
+            + (f'<div class="old-price">De {moeda(preco_normal)}</div><div class="product-price">Por {moeda(preco_atual)} <span style="font-size:.72rem;background:#EDE4F3;padding:.18rem .4rem;border-radius:20px">OFERTA</span></div>' if em_promocao else f'<div class="product-price">{moeda(preco_atual)}</div>') +
             f'<a class="buy-link" href="{link}" target="_blank" rel="noopener">Pedir pelo WhatsApp</a>'
             f'</div></article>')
 
@@ -120,7 +128,7 @@ except Exception as erro:
     st.caption(str(erro))
     st.stop()
 
-st.markdown('<header class="mabel-header"><h1 class="mabel-logo">Mabel Store</h1><p class="mabel-subtitle">Encontre seus favoritos 💜</p><p style="color:#655B6B;margin-top:.5rem">Escolha seus produtos e fale com a gente pelo WhatsApp.</p></header>', unsafe_allow_html=True)
+st.markdown('<header class="mabel-header"><div class="mabel-promo">SUA VITRINE FAVORITA</div><h1 class="mabel-logo">Mabel Store</h1><p class="mabel-subtitle">Peças escolhidas com carinho para você 💜</p><p style="color:#655B6B;margin-top:.7rem">Explore nossos produtos, aproveite as ofertas e peça diretamente pelo WhatsApp.</p></header>', unsafe_allow_html=True)
 kits = [p for p in produtos if str(p[2] or "").strip().casefold() == "kits"]
 html_secoes = secao_carrossel("✨ Destaques", destaques) + secao_carrossel("🎁 Kits", kits)
 if html_secoes:
